@@ -1,0 +1,9 @@
+{
+  "service": "SecurityHub",
+  "findingType": "S3_PUBLIC_ACCESS",
+  "severity": "HIGH",
+  "resource": "example-healthcare-bucket",
+  "description": "S3 bucket allows public access.",
+  "complianceImpact": ["HIPAA", "SOC2"],
+  "recommendedAction": "Enable S3 Block Public Access and review bucket policy."
+}
