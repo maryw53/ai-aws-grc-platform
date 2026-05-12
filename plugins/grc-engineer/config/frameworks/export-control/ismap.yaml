@@ -1,0 +1,433 @@
+name: ISMAP - Information System Security Management and Assessment Program
+version: "2024"
+description: |
+  Japanese Government cloud security certification program. Based on ISO/IEC 27001, 27002,
+  27017, 27018 with Japan-specific requirements. Required for cloud services used by
+  Japanese government agencies.
+
+applicable_to:
+  - Cloud service providers serving Japanese Government
+  - Organizations handling Japanese Government data
+  - Systems supporting Japanese public sector operations
+
+base_standards:
+  - ISO/IEC 27001 (Information Security Management)
+  - ISO/IEC 27002 (Security Controls)
+  - ISO/IEC 27017 (Cloud Security)
+  - ISO/IEC 27018 (Cloud Privacy)
+  - NIST SP 800-53 (Security Controls)
+
+japan_specific_requirements:
+  data_residency:
+    description: Data should reside in Japan unless specifically approved
+    regions:
+      - Tokyo (ap-northeast-1 for AWS)
+      - Osaka (ap-northeast-3 for AWS)
+  language:
+    description: Support and documentation in Japanese
+  local_entity:
+    description: Local Japanese entity or representative required
+
+controls:
+  ISMAP-ORG-1:
+    title: Information Security Policy
+    description: Establish and maintain information security policies aligned with ISO 27001
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws organizations describe-organization"
+            description: "Check organization structure"
+            pass_criteria: "Organization supports policy management"
+          - cmd: "aws configservice describe-conformance-packs"
+            description: "Check conformance packs"
+            pass_criteria: "Conformance packs document security controls"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== ISMAP Organization Security Policy ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== AWS Organization ==="
+          aws organizations describe-organization 2>/dev/null || echo "Not an organization master"
+          echo ""
+          echo "=== Service Control Policies ==="
+          aws organizations list-policies --filter SERVICE_CONTROL_POLICY --query 'Policies[*].{Name:Name,Id:Id}' --output table 2>/dev/null || echo "N/A"
+          echo ""
+          echo "=== Conformance Packs ==="
+          aws configservice describe-conformance-packs --query 'ConformancePackDetails[*].{Name:ConformancePackName}' --output table
+      azure:
+        commands:
+          - cmd: "az policy definition list"
+            description: "List policy definitions"
+            pass_criteria: "Policies support ISMAP requirements"
+      gcp:
+        commands:
+          - cmd: "gcloud resource-manager org-policies list --organization=ORG_ID"
+            description: "List organization policies"
+            pass_criteria: "Org policies support ISMAP"
+
+  ISMAP-ORG-2:
+    title: Roles and Responsibilities
+    description: Define and document security roles and responsibilities
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-groups"
+            description: "List IAM groups (roles)"
+            pass_criteria: "Groups define security responsibilities"
+          - cmd: "aws iam list-roles --query 'Roles[*].{RoleName:RoleName,Description:Description}'"
+            description: "List IAM roles with descriptions"
+            pass_criteria: "Roles are documented"
+      azure:
+        commands:
+          - cmd: "az role definition list --custom-role-only"
+            description: "List custom roles"
+            pass_criteria: "Custom roles define responsibilities"
+      gcp:
+        commands:
+          - cmd: "gcloud iam roles list --project=PROJECT"
+            description: "List custom roles"
+            pass_criteria: "Roles define responsibilities"
+
+  ISMAP-HR-1:
+    title: Human Resource Security
+    description: Personnel security screening and awareness training
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-users --query 'Users[*].{UserName:UserName,CreateDate:CreateDate}'"
+            description: "List users for HR security review"
+            pass_criteria: "All users have completed screening"
+      azure:
+        commands:
+          - cmd: "az ad user list"
+            description: "List users for HR review"
+            pass_criteria: "Users have completed screening"
+
+  ISMAP-ASSET-1:
+    title: Asset Management
+    description: Maintain inventory of information assets
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws resourcegroupstaggingapi get-resources"
+            description: "List tagged resources"
+            pass_criteria: "Assets are inventoried and tagged"
+          - cmd: "aws ssm describe-instance-information"
+            description: "List managed instances"
+            pass_criteria: "Instances are in inventory"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== ISMAP Asset Management ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Resource Inventory by Type ==="
+          aws resourcegroupstaggingapi get-resources --query 'ResourceTagMappingList[*].ResourceARN' --output text | cut -d: -f6 | sort | uniq -c | sort -rn
+          echo ""
+          echo "=== EC2 Instances ==="
+          aws ec2 describe-instances --query 'Reservations[*].Instances[*].{Id:InstanceId,Type:InstanceType,State:State.Name}' --output table
+      azure:
+        commands:
+          - cmd: "az resource list --output table"
+            description: "List resources"
+            pass_criteria: "Resources are inventoried"
+      gcp:
+        commands:
+          - cmd: "gcloud asset search-all-resources"
+            description: "Search all resources"
+            pass_criteria: "Resources are inventoried"
+
+  ISMAP-ACCESS-1:
+    title: Access Control
+    description: Implement access control per ISO 27001 A.9
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam get-account-password-policy"
+            description: "Check password policy"
+            pass_criteria: "Strong password policy"
+          - cmd: "aws iam list-virtual-mfa-devices"
+            description: "Check MFA devices"
+            pass_criteria: "MFA enabled"
+          - cmd: "aws iam list-users --query 'Users[*].UserName' --output text | xargs -I {} aws iam list-attached-user-policies --user-name {}"
+            description: "Check user policies"
+            pass_criteria: "Least privilege enforced"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== ISMAP Access Control ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Password Policy ==="
+          aws iam get-account-password-policy --output table
+          echo ""
+          echo "=== MFA Status ==="
+          aws iam list-virtual-mfa-devices --query 'VirtualMFADevices[*].{User:User.UserName,SerialNumber:SerialNumber}' --output table
+      azure:
+        commands:
+          - cmd: "az ad conditional-access policy list"
+            description: "Check CA policies"
+            pass_criteria: "Access control policies defined"
+      gcp:
+        commands:
+          - cmd: "gcloud iam policies get-iam-policy PROJECT"
+            description: "Check IAM policy"
+            pass_criteria: "Access control configured"
+
+  ISMAP-CRYPTO-1:
+    title: Cryptography
+    description: Implement cryptographic controls per ISO 27001 A.10
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws kms list-keys"
+            description: "List KMS keys"
+            pass_criteria: "Encryption keys are managed"
+          - cmd: "aws ec2 describe-volumes --query 'Volumes[*].{VolumeId:VolumeId,Encrypted:Encrypted}'"
+            description: "Check EBS encryption"
+            pass_criteria: "Volumes are encrypted"
+          - cmd: "aws s3api get-bucket-encryption --bucket BUCKET"
+            description: "Check S3 encryption"
+            pass_criteria: "Buckets are encrypted"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== ISMAP Cryptography Controls ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== KMS Keys ==="
+          aws kms list-keys --query 'Keys[*].KeyId' --output table
+          echo ""
+          echo "=== EBS Encryption ==="
+          aws ec2 describe-volumes --query 'Volumes[*].{VolumeId:VolumeId,Encrypted:Encrypted}' --output table
+          echo ""
+          echo "=== S3 Bucket Encryption ==="
+          for bucket in $(aws s3api list-buckets --query 'Buckets[*].Name' --output text); do
+            echo -n "$bucket: "
+            aws s3api get-bucket-encryption --bucket "$bucket" 2>/dev/null && echo "Encrypted" || echo "NOT ENCRYPTED"
+          done
+      azure:
+        commands:
+          - cmd: "az keyvault list"
+            description: "List Key Vaults"
+            pass_criteria: "Key management configured"
+      gcp:
+        commands:
+          - cmd: "gcloud kms keyrings list --location=asia-northeast1"
+            description: "List KMS key rings in Tokyo"
+            pass_criteria: "Key management configured"
+
+  ISMAP-PHYS-1:
+    title: Physical Security
+    description: Physical and environmental security per ISO 27001 A.11
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ec2 describe-availability-zones --region ap-northeast-1"
+            description: "Check Tokyo region availability"
+            pass_criteria: "Tokyo region used for Japan data"
+          - cmd: "aws ec2 describe-availability-zones --region ap-northeast-3"
+            description: "Check Osaka region availability"
+            pass_criteria: "Osaka region available for redundancy"
+      azure:
+        commands:
+          - cmd: "az account list-locations --query '[?contains(name,`japan`)].name'"
+            description: "List Japan locations"
+            pass_criteria: "Japan East/West regions used"
+      gcp:
+        commands:
+          - cmd: "gcloud compute regions describe asia-northeast1"
+            description: "Check Tokyo region"
+            pass_criteria: "Tokyo region used"
+
+  ISMAP-OPS-1:
+    title: Operations Security
+    description: Operations security controls per ISO 27001 A.12
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail describe-trails"
+            description: "Check CloudTrail"
+            pass_criteria: "Audit logging enabled"
+          - cmd: "aws configservice describe-configuration-recorder-status"
+            description: "Check Config"
+            pass_criteria: "Configuration monitoring enabled"
+          - cmd: "aws guardduty list-detectors"
+            description: "Check GuardDuty"
+            pass_criteria: "Threat detection enabled"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== ISMAP Operations Security ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== CloudTrail ==="
+          aws cloudtrail describe-trails --query 'trailList[*].{Name:Name,IsMultiRegion:IsMultiRegionTrail}' --output table
+          echo ""
+          echo "=== Config Recorder ==="
+          aws configservice describe-configuration-recorder-status --output table
+          echo ""
+          echo "=== GuardDuty ==="
+          DETECTOR=$(aws guardduty list-detectors --query 'DetectorIds[0]' --output text)
+          if [ "$DETECTOR" != "None" ] && [ -n "$DETECTOR" ]; then
+            aws guardduty get-detector --detector-id $DETECTOR --query '{Status:Status}'
+          fi
+      azure:
+        commands:
+          - cmd: "az monitor activity-log list --max-events 5"
+            description: "Check activity logging"
+            pass_criteria: "Activity logging enabled"
+      gcp:
+        commands:
+          - cmd: "gcloud logging sinks list"
+            description: "Check logging"
+            pass_criteria: "Logging configured"
+
+  ISMAP-COMM-1:
+    title: Communications Security
+    description: Network security controls per ISO 27001 A.13
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ec2 describe-vpcs"
+            description: "Check VPC configuration"
+            pass_criteria: "Network segmentation configured"
+          - cmd: "aws ec2 describe-security-groups"
+            description: "Check security groups"
+            pass_criteria: "Firewall rules configured"
+          - cmd: "aws elbv2 describe-listeners --query 'Listeners[*].{Protocol:Protocol,SslPolicy:SslPolicy}'"
+            description: "Check TLS configuration"
+            pass_criteria: "TLS 1.2+ required"
+      azure:
+        commands:
+          - cmd: "az network vnet list"
+            description: "Check VNet configuration"
+            pass_criteria: "Network segmentation configured"
+      gcp:
+        commands:
+          - cmd: "gcloud compute networks list"
+            description: "Check VPC networks"
+            pass_criteria: "Network segmentation configured"
+
+  ISMAP-SUPPLY-1:
+    title: Supplier Relationships
+    description: Cloud service provider security per ISO 27001 A.15
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ram list-resources --resource-owner SELF"
+            description: "List shared resources"
+            pass_criteria: "Third-party access is controlled"
+          - cmd: "aws iam list-roles --query 'Roles[?contains(AssumeRolePolicyDocument|to_string(@),`sts:ExternalId`)]'"
+            description: "Check external access roles"
+            pass_criteria: "External access is documented"
+      azure:
+        commands:
+          - cmd: "az ad sp list"
+            description: "List service principals"
+            pass_criteria: "Third-party access controlled"
+
+  ISMAP-INCIDENT-1:
+    title: Incident Management
+    description: Information security incident management per ISO 27001 A.16
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm-incidents list-response-plans"
+            description: "List incident response plans"
+            pass_criteria: "Incident response documented"
+          - cmd: "aws securityhub get-findings --max-items 10"
+            description: "Check Security Hub findings"
+            pass_criteria: "Security monitoring active"
+      azure:
+        commands:
+          - cmd: "az sentinel incident list --resource-group RG --workspace-name WS"
+            description: "List Sentinel incidents"
+            pass_criteria: "Incident management configured"
+      gcp:
+        commands:
+          - cmd: "gcloud scc findings list ORG_ID"
+            description: "List SCC findings"
+            pass_criteria: "Security monitoring active"
+
+  ISMAP-BC-1:
+    title: Business Continuity
+    description: Business continuity controls per ISO 27001 A.17
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws backup list-backup-plans"
+            description: "Check backup plans"
+            pass_criteria: "Backup plans configured"
+          - cmd: "aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,MultiAZ:MultiAZ}'"
+            description: "Check Multi-AZ"
+            pass_criteria: "High availability configured"
+      azure:
+        commands:
+          - cmd: "az backup vault list"
+            description: "Check backup vaults"
+            pass_criteria: "Backup configured"
+      gcp:
+        commands:
+          - cmd: "gcloud sql instances describe INSTANCE --format='value(settings.backupConfiguration)'"
+            description: "Check SQL backup"
+            pass_criteria: "Backup configured"
+
+  ISMAP-CLOUD-1:
+    title: Cloud-Specific Controls (ISO 27017)
+    description: Cloud security controls per ISO 27017
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ec2 describe-instances --query 'Reservations[*].Instances[*].{Id:InstanceId,Tenancy:Placement.Tenancy}'"
+            description: "Check instance tenancy"
+            pass_criteria: "Appropriate isolation configured"
+          - cmd: "aws organizations list-aws-service-access-for-organization"
+            description: "Check service integrations"
+            pass_criteria: "Cloud services are managed"
+      azure:
+        commands:
+          - cmd: "az resource list --query '[].type' | sort | uniq -c"
+            description: "List resource types"
+            pass_criteria: "Cloud resources are tracked"
+
+  ISMAP-PRIVACY-1:
+    title: Cloud Privacy (ISO 27018)
+    description: PII protection controls per ISO 27018
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws macie2 get-macie-session"
+            description: "Check Macie for PII detection"
+            pass_criteria: "PII detection enabled"
+          - cmd: "aws resourcegroupstaggingapi get-resources --tag-filters Key=DataClassification,Values=PII"
+            description: "Find PII-tagged resources"
+            pass_criteria: "PII data is classified"
+      azure:
+        commands:
+          - cmd: "az purview account list"
+            description: "Check Purview for data governance"
+            pass_criteria: "Data governance enabled"
+      gcp:
+        commands:
+          - cmd: "gcloud dlp jobs list"
+            description: "Check DLP jobs"
+            pass_criteria: "PII detection enabled"
+
+japan_regions:
+  aws:
+    - ap-northeast-1  # Tokyo
+    - ap-northeast-3  # Osaka
+  azure:
+    - japaneast       # Tokyo
+    - japanwest       # Osaka
+  gcp:
+    - asia-northeast1 # Tokyo
+    - asia-northeast2 # Osaka
+
+ismap_certified_services:
+  aws:
+    url: "https://aws.amazon.com/compliance/ismap/"
+    regions: ["ap-northeast-1", "ap-northeast-3"]
+  azure:
+    url: "https://docs.microsoft.com/en-us/azure/compliance/offerings/offering-ismap"
+    regions: ["japaneast", "japanwest"]
+  gcp:
+    url: "https://cloud.google.com/security/compliance/ismap"
+    regions: ["asia-northeast1", "asia-northeast2"]

@@ -1,0 +1,899 @@
+name: FedRAMP 20x Key Security Indicators
+version: "2024"
+description: |
+  Machine-readable compliance framework for the FedRAMP 20x modernization program.
+  Key Security Indicators (KSIs) focus on cloud-native security with automated validation
+  and persistent assessment. This framework emphasizes modern DevSecOps practices,
+  zero-trust architecture, and continuous monitoring.
+
+source: https://github.com/FedRAMP/docs
+
+applicable_to:
+  - Cloud Service Providers seeking FedRAMP authorization
+  - Federal agencies using cloud services
+  - Organizations pursuing FedRAMP compliance
+  - DevSecOps teams implementing continuous compliance
+
+categories:
+  AFR:
+    name: Authorization by FedRAMP
+    description: Addressing FedRAMP 20x requirements and government-specific maintenance/reporting
+    indicator_count: 11
+  CED:
+    name: Cybersecurity Education
+    description: Continuous employee education on security with regular testing
+    indicator_count: 4
+  CMT:
+    name: Change Management
+    description: Proper documentation and baseline updates for all system changes
+    indicator_count: 5
+  CNA:
+    name: Cloud Native Architecture
+    description: Use cloud-native principles to enforce confidentiality, integrity, and availability
+    indicator_count: 8
+  IAM:
+    name: Identity and Access Management
+    description: Protect user data, control access, and apply zero-trust principles
+    indicator_count: 7
+  INR:
+    name: Incident Response
+    description: Document, report, and analyze incidents for compliance and improvement
+    indicator_count: 3
+  MLA:
+    name: Monitoring, Logging, and Auditing
+    description: Monitor, log, and audit all important events and changes
+    indicator_count: 8
+  PIY:
+    name: Policy and Inventory
+    description: Intentional, organized guidance for securing all resources including personnel
+    indicator_count: 2
+
+controls:
+  # ============================================================================
+  # KSI-AFR: Authorization by FedRAMP
+  # ============================================================================
+  KSI-AFR-01:
+    title: Minimum Assessment Scope
+    description: Define assessment scope and persistently address requirements
+    category: AFR
+    nist_mapping: [CA-2, CA-6]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws configservice describe-conformance-packs"
+            description: "List conformance packs defining assessment scope"
+            pass_criteria: "Conformance packs document security controls"
+          - cmd: "aws securityhub describe-standards"
+            description: "List enabled security standards"
+            pass_criteria: "FedRAMP standards enabled"
+
+  KSI-AFR-02:
+    title: Key Security Indicators
+    description: Set goals based on KSIs with automated validation
+    category: AFR
+    nist_mapping: [CA-7, PM-6]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws securityhub get-findings --filters '{\"ComplianceStatus\":[{\"Value\":\"FAILED\",\"Comparison\":\"EQUALS\"}]}' --max-items 10"
+            description: "Check compliance findings"
+            pass_criteria: "KSI compliance tracked automatically"
+
+  KSI-AFR-03:
+    title: Authorization Data Sharing
+    description: Share data per FedRAMP process
+    category: AFR
+    nist_mapping: [CA-3, SA-9]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ram list-resources --resource-owner SELF"
+            description: "List shared resources"
+            pass_criteria: "Resource sharing documented"
+
+  KSI-AFR-04:
+    title: Vulnerability Detection and Response
+    description: Document detection/response methodology with automated scanning
+    category: AFR
+    nist_mapping: [RA-5, SI-2, SI-5]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws inspector2 list-findings --filter-criteria '{\"severity\":[{\"comparison\":\"EQUALS\",\"value\":\"CRITICAL\"}]}' --max-items 10"
+            description: "Check for critical vulnerabilities"
+            pass_criteria: "No unmitigated critical vulnerabilities"
+          - cmd: "aws ecr describe-image-scan-findings --repository-name REPO --image-id imageTag=latest"
+            description: "Check container image vulnerabilities"
+            pass_criteria: "Container images scanned"
+          - cmd: "aws guardduty list-findings --detector-id DETECTOR --max-results 10"
+            description: "Check GuardDuty findings"
+            pass_criteria: "Threat detection active"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== KSI-AFR-04 Vulnerability Detection ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Inspector Findings (Critical) ==="
+          aws inspector2 list-findings --filter-criteria '{"severity":[{"comparison":"EQUALS","value":"CRITICAL"}]}' --max-items 20 --query 'findings[*].{Title:title,Severity:severity,Status:status}' --output table 2>/dev/null || echo "Inspector not enabled"
+          echo ""
+          echo "=== SSM Patch Compliance ==="
+          aws ssm describe-instance-patch-states --query 'InstancePatchStates[*].{Instance:InstanceId,Missing:MissingCount,Failed:FailedCount}' --output table
+      azure:
+        commands:
+          - cmd: "az security assessment list --query '[?status.code==`Unhealthy`].{Name:displayName,Severity:severity}' --output table"
+            description: "Check unhealthy assessments"
+            pass_criteria: "No critical unhealthy assessments"
+      gcp:
+        commands:
+          - cmd: "gcloud scc findings list ORGANIZATION --filter='severity=CRITICAL OR severity=HIGH'"
+            description: "List critical/high SCC findings"
+            pass_criteria: "Critical findings addressed"
+
+  KSI-AFR-05:
+    title: Significant Change Notifications
+    description: Track changes and notify parties of significant modifications
+    category: AFR
+    nist_mapping: [CM-3, CM-4]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws config describe-config-rules"
+            description: "List Config rules for change tracking"
+            pass_criteria: "Change tracking enabled"
+          - cmd: "aws sns list-topics"
+            description: "List SNS topics for notifications"
+            pass_criteria: "Notification channels configured"
+
+  KSI-AFR-06:
+    title: Collaborative Continuous Monitoring
+    description: Provide reports and quarterly reviews
+    category: AFR
+    nist_mapping: [CA-7, PM-14]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws securityhub get-findings --max-items 5"
+            description: "Check Security Hub findings"
+            pass_criteria: "Continuous monitoring active"
+
+  KSI-AFR-07:
+    title: Recommended Secure Configuration
+    description: Develop secure defaults and guidance
+    category: AFR
+    nist_mapping: [CM-6, CM-7]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws configservice describe-conformance-pack-compliance --conformance-pack-name PACK"
+            description: "Check conformance pack compliance"
+            pass_criteria: "Secure configurations enforced"
+
+  KSI-AFR-08:
+    title: FedRAMP Security Inbox
+    description: Operate secure communication channel for security issues
+    category: AFR
+    nist_mapping: [IR-6, PM-15]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ses list-identities"
+            description: "List SES identities for security communications"
+            pass_criteria: "Security communication channel established"
+
+  KSI-AFR-09:
+    title: Persistent Validation and Assessment
+    description: Validate and report on security effectiveness continuously
+    category: AFR
+    nist_mapping: [CA-2, CA-7]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws config describe-configuration-recorder-status"
+            description: "Check Config recorder status"
+            pass_criteria: "Continuous recording enabled"
+          - cmd: "aws securityhub describe-hub"
+            description: "Check Security Hub status"
+            pass_criteria: "Security Hub enabled"
+
+  KSI-AFR-10:
+    title: Incident Communications Procedures
+    description: Integrate FedRAMP incident procedures
+    category: AFR
+    nist_mapping: [IR-4, IR-6, IR-8]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm-incidents list-response-plans"
+            description: "List incident response plans"
+            pass_criteria: "Response plans documented"
+
+  KSI-AFR-11:
+    title: Using Cryptographic Modules
+    description: Select/use cryptographic modules per guidance (FIPS 140-2/3)
+    category: AFR
+    nist_mapping: [SC-12, SC-13]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws kms list-keys"
+            description: "List KMS keys (FIPS 140-2 Level 2)"
+            pass_criteria: "KMS encryption configured"
+          - cmd: "aws ec2 describe-volumes --query 'Volumes[*].{Id:VolumeId,Encrypted:Encrypted}'"
+            description: "Check volume encryption"
+            pass_criteria: "All volumes encrypted"
+
+  # ============================================================================
+  # KSI-CED: Cybersecurity Education
+  # ============================================================================
+  KSI-CED-01:
+    title: General Security Training
+    description: Provide security awareness training for all employees
+    category: CED
+    nist_mapping: [AT-2, AT-2(2)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-users"
+            description: "List users for training verification"
+            pass_criteria: "All users complete security training"
+
+  KSI-CED-02:
+    title: Role-Specific Training
+    description: Provide specialized training for high-risk roles (privileged access)
+    category: CED
+    nist_mapping: [AT-3, AT-3(1)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam get-account-authorization-details --filter User --query 'UserDetailList[?AttachedManagedPolicies[?PolicyName==`AdministratorAccess`]].UserName'"
+            description: "List privileged users"
+            pass_criteria: "Privileged users receive specialized training"
+
+  KSI-CED-03:
+    title: Secure Development Training
+    description: Train development/engineering staff on secure software delivery
+    category: CED
+    nist_mapping: [AT-3, SA-16]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws codepipeline list-pipelines"
+            description: "List CI/CD pipelines"
+            pass_criteria: "DevSecOps practices implemented"
+
+  KSI-CED-04:
+    title: Incident Response Training
+    description: Train incident response and disaster recovery staff
+    category: CED
+    nist_mapping: [AT-3, IR-2]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm-incidents list-response-plans"
+            description: "List incident response plans"
+            pass_criteria: "IR team trained on procedures"
+
+  # ============================================================================
+  # KSI-CMT: Change Management
+  # ============================================================================
+  KSI-CMT-01:
+    title: Service Modification Logging
+    description: Log and monitor all service modifications
+    category: CMT
+    nist_mapping: [CM-3, SI-12]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail describe-trails"
+            description: "Check CloudTrail for change logging"
+            pass_criteria: "All changes logged"
+          - cmd: "aws config describe-configuration-recorder-status"
+            description: "Check Config recorder"
+            pass_criteria: "Configuration changes tracked"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== KSI-CMT-01 Service Modification Logging ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== CloudTrail Status ==="
+          aws cloudtrail describe-trails --query 'trailList[*].{Name:Name,IsMultiRegion:IsMultiRegionTrail,IsLogging:IsOrganizationTrail}' --output table
+          echo ""
+          echo "=== Config Recorder Status ==="
+          aws config describe-configuration-recorder-status --output table
+      azure:
+        commands:
+          - cmd: "az monitor activity-log list --max-events 10"
+            description: "Check activity logging"
+            pass_criteria: "Activity logging enabled"
+      gcp:
+        commands:
+          - cmd: "gcloud logging sinks list"
+            description: "List logging sinks"
+            pass_criteria: "Logging configured"
+
+  KSI-CMT-02:
+    title: Immutable Infrastructure
+    description: Execute changes via redeployment of version-controlled immutable resources
+    category: CMT
+    nist_mapping: [CM-2, CM-3]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ecr describe-repositories"
+            description: "List container repositories"
+            pass_criteria: "Container images versioned"
+          - cmd: "aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE"
+            description: "List CloudFormation stacks"
+            pass_criteria: "Infrastructure as Code deployed"
+      azure:
+        commands:
+          - cmd: "az acr list"
+            description: "List container registries"
+            pass_criteria: "Container images versioned"
+      gcp:
+        commands:
+          - cmd: "gcloud container images list"
+            description: "List container images"
+            pass_criteria: "Container images versioned"
+
+  KSI-CMT-03:
+    title: Automated Testing and Validation
+    description: Automate testing and validation throughout deployment pipeline
+    category: CMT
+    nist_mapping: [CM-4, SA-11]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws codepipeline list-pipelines"
+            description: "List CI/CD pipelines"
+            pass_criteria: "Automated pipelines configured"
+          - cmd: "aws codebuild list-projects"
+            description: "List CodeBuild projects"
+            pass_criteria: "Build/test automation configured"
+
+  KSI-CMT-04:
+    title: Documented Change Procedures
+    description: Always follow documented change procedures
+    category: CMT
+    nist_mapping: [CM-3, CM-9]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm list-documents --document-filter-list key=DocumentType,value=Automation"
+            description: "List SSM automation documents"
+            pass_criteria: "Change procedures documented"
+
+  # ============================================================================
+  # KSI-CNA: Cloud Native Architecture
+  # ============================================================================
+  KSI-CNA-01:
+    title: Network Traffic Restriction
+    description: Restrict inbound and outbound network traffic
+    category: CNA
+    nist_mapping: [SC-7, SC-7(5), AC-4]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ec2 describe-security-groups --query 'SecurityGroups[*].{GroupId:GroupId,GroupName:GroupName,IngressRules:IpPermissions}'"
+            description: "Review security group rules"
+            pass_criteria: "Least privilege network access"
+          - cmd: "aws ec2 describe-network-acls"
+            description: "Check network ACLs"
+            pass_criteria: "Network ACLs restrict traffic"
+          - cmd: "aws ec2 describe-flow-logs"
+            description: "Check VPC Flow Logs"
+            pass_criteria: "Network traffic logged"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== KSI-CNA-01 Network Traffic Restriction ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Security Groups with Open Ingress (0.0.0.0/0) ==="
+          aws ec2 describe-security-groups --query 'SecurityGroups[?IpPermissions[?IpRanges[?CidrIp==`0.0.0.0/0`]]].{GroupId:GroupId,GroupName:GroupName}' --output table
+          echo ""
+          echo "=== VPC Flow Logs ==="
+          aws ec2 describe-flow-logs --query 'FlowLogs[*].{Id:FlowLogId,Status:FlowLogStatus,VPC:ResourceId}' --output table
+          echo ""
+          echo "=== Security Groups Allowing SSH from Anywhere ==="
+          aws ec2 describe-security-groups --filters "Name=ip-permission.from-port,Values=22" "Name=ip-permission.cidr,Values=0.0.0.0/0" --query 'SecurityGroups[*].{GroupId:GroupId,GroupName:GroupName}' --output table
+      azure:
+        commands:
+          - cmd: "az network nsg list --query '[].{Name:name,Rules:securityRules[*].{Name:name,Direction:direction,Access:access}}'"
+            description: "List NSG rules"
+            pass_criteria: "Restrictive network rules"
+      gcp:
+        commands:
+          - cmd: "gcloud compute firewall-rules list --format='table(name,direction,allowed,sourceRanges)'"
+            description: "List firewall rules"
+            pass_criteria: "Restrictive firewall rules"
+
+  KSI-CNA-02:
+    title: Minimize Attack Surface
+    description: Minimize attack surface and lateral movement risk
+    category: CNA
+    nist_mapping: [CM-7, SC-7(21)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ec2 describe-instances --query 'Reservations[*].Instances[*].{Id:InstanceId,PublicIp:PublicIpAddress}'"
+            description: "Check for public IP assignments"
+            pass_criteria: "Minimal public exposure"
+          - cmd: "aws elbv2 describe-load-balancers --query 'LoadBalancers[*].{Name:LoadBalancerName,Scheme:Scheme}'"
+            description: "Check load balancer exposure"
+            pass_criteria: "Internal load balancers where possible"
+
+  KSI-CNA-03:
+    title: Logical Networking
+    description: Use logical networking to enforce traffic flow
+    category: CNA
+    nist_mapping: [SC-7, SC-32]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ec2 describe-vpcs --query 'Vpcs[*].{VpcId:VpcId,CidrBlock:CidrBlock}'"
+            description: "List VPCs"
+            pass_criteria: "Network segmentation implemented"
+          - cmd: "aws ec2 describe-subnets --query 'Subnets[*].{SubnetId:SubnetId,VpcId:VpcId,CidrBlock:CidrBlock,MapPublicIpOnLaunch:MapPublicIpOnLaunch}'"
+            description: "Check subnet configuration"
+            pass_criteria: "Public/private subnet separation"
+
+  KSI-CNA-04:
+    title: Immutable Infrastructure Defaults
+    description: Deploy immutable infrastructure with defined security defaults
+    category: CNA
+    nist_mapping: [CM-2, CM-6]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ec2 get-ebs-encryption-by-default"
+            description: "Check EBS default encryption"
+            pass_criteria: "Default encryption enabled"
+          - cmd: "aws s3control get-public-access-block --account-id ACCOUNT"
+            description: "Check S3 public access block"
+            pass_criteria: "Public access blocked by default"
+
+  KSI-CNA-05:
+    title: DoS Protection
+    description: Protect against denial-of-service and unwanted activity
+    category: CNA
+    nist_mapping: [SC-5, SC-5(1)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws shield describe-subscription"
+            description: "Check Shield subscription"
+            pass_criteria: "DDoS protection enabled"
+          - cmd: "aws wafv2 list-web-acls --scope REGIONAL"
+            description: "List WAF web ACLs"
+            pass_criteria: "WAF protection configured"
+      azure:
+        commands:
+          - cmd: "az network ddos-protection list"
+            description: "List DDoS protection plans"
+            pass_criteria: "DDoS protection enabled"
+      gcp:
+        commands:
+          - cmd: "gcloud compute security-policies list"
+            description: "List Cloud Armor policies"
+            pass_criteria: "Cloud Armor configured"
+
+  KSI-CNA-06:
+    title: High Availability
+    description: Design for high availability and rapid recovery
+    category: CNA
+    nist_mapping: [CP-6, CP-7, SC-36]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,MultiAZ:MultiAZ}'"
+            description: "Check RDS Multi-AZ"
+            pass_criteria: "Multi-AZ enabled for databases"
+          - cmd: "aws autoscaling describe-auto-scaling-groups --query 'AutoScalingGroups[*].{Name:AutoScalingGroupName,MinSize:MinSize,MaxSize:MaxSize}'"
+            description: "Check Auto Scaling"
+            pass_criteria: "Auto scaling configured"
+
+  KSI-CNA-07:
+    title: Provider Best Practices
+    description: Implement resources per cloud provider best practices
+    category: CNA
+    nist_mapping: [SA-8, SA-15]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws support describe-trusted-advisor-checks --language en"
+            description: "List Trusted Advisor checks"
+            pass_criteria: "Best practice recommendations reviewed"
+          - cmd: "aws securityhub get-enabled-standards"
+            description: "Check enabled standards"
+            pass_criteria: "AWS Foundational Best Practices enabled"
+
+  KSI-CNA-08:
+    title: Persistent Security Assessment
+    description: Persistently assess security posture and auto-enforce operational state
+    category: CNA
+    nist_mapping: [CA-7, SI-4, SI-7]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws securityhub get-findings --max-items 10"
+            description: "Check Security Hub findings"
+            pass_criteria: "Continuous security assessment active"
+          - cmd: "aws config describe-config-rules"
+            description: "List Config rules"
+            pass_criteria: "Automated compliance rules configured"
+          - cmd: "aws guardduty list-detectors"
+            description: "Check GuardDuty detectors"
+            pass_criteria: "Threat detection enabled"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== KSI-CNA-08 Persistent Security Assessment ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Security Hub Status ==="
+          aws securityhub describe-hub 2>/dev/null || echo "Security Hub NOT ENABLED"
+          echo ""
+          echo "=== Config Rules ==="
+          aws config describe-config-rules --query 'ConfigRules[*].{Name:ConfigRuleName,State:ConfigRuleState}' --output table
+          echo ""
+          echo "=== GuardDuty Status ==="
+          DETECTOR=$(aws guardduty list-detectors --query 'DetectorIds[0]' --output text)
+          if [ "$DETECTOR" != "None" ] && [ -n "$DETECTOR" ]; then
+            aws guardduty get-detector --detector-id $DETECTOR --query '{Status:Status}'
+          else
+            echo "GuardDuty NOT ENABLED"
+          fi
+      azure:
+        commands:
+          - cmd: "az security secure-scores list"
+            description: "Check secure scores"
+            pass_criteria: "Security posture continuously assessed"
+      gcp:
+        commands:
+          - cmd: "gcloud scc sources list ORGANIZATION"
+            description: "List SCC sources"
+            pass_criteria: "Security Command Center enabled"
+
+  # ============================================================================
+  # KSI-IAM: Identity and Access Management
+  # ============================================================================
+  KSI-IAM-01:
+    title: Phishing-Resistant MFA
+    description: Enforce phishing-resistant MFA for all user authentication
+    category: IAM
+    nist_mapping: [IA-2, IA-2(1), IA-2(2), IA-2(6)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-virtual-mfa-devices"
+            description: "List MFA devices"
+            pass_criteria: "MFA enabled for all users"
+          - cmd: "aws iam get-credential-report"
+            description: "Get credential report for MFA status"
+            pass_criteria: "All users have MFA enabled"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== KSI-IAM-01 Phishing-Resistant MFA ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== MFA Devices ==="
+          aws iam list-virtual-mfa-devices --query 'VirtualMFADevices[*].{User:User.UserName,SerialNumber:SerialNumber}' --output table
+          echo ""
+          echo "=== Users Without MFA ==="
+          aws iam generate-credential-report >/dev/null 2>&1
+          sleep 5
+          aws iam get-credential-report --query 'Content' --output text | base64 -d | awk -F',' 'NR>1 && $8=="false" {print $1": NO MFA"}'
+          echo ""
+          echo "NOTE: FedRAMP 20x requires phishing-resistant MFA (FIDO2/WebAuthn preferred)"
+      azure:
+        commands:
+          - cmd: "az ad conditional-access policy list"
+            description: "Check MFA enforcement policies"
+            pass_criteria: "MFA policies enforced"
+      gcp:
+        commands:
+          - cmd: "gcloud identity groups list"
+            description: "List identity groups"
+            pass_criteria: "2-Step Verification enforced"
+
+  KSI-IAM-02:
+    title: Passwordless or Strong Passwords
+    description: Use passwordless methods; otherwise enforce strong passwords with MFA
+    category: IAM
+    nist_mapping: [IA-5, IA-5(1)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam get-account-password-policy"
+            description: "Check password policy"
+            pass_criteria: "Strong password policy or passwordless"
+
+  KSI-IAM-03:
+    title: Secure Service Authentication
+    description: Enforce secure authentication for non-user accounts/services
+    category: IAM
+    nist_mapping: [IA-3, IA-9]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-roles --query 'Roles[*].{RoleName:RoleName,CreateDate:CreateDate}'"
+            description: "List IAM roles"
+            pass_criteria: "Service roles use secure authentication"
+          - cmd: "aws iam list-service-specific-credentials"
+            description: "Check service credentials"
+            pass_criteria: "Service credentials managed securely"
+
+  KSI-IAM-04:
+    title: Least Privilege Authorization
+    description: Implement least-privileged, role/attribute-based, just-in-time authorization
+    category: IAM
+    nist_mapping: [AC-2, AC-6, AC-6(1), AC-6(5)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam get-account-authorization-details --filter User"
+            description: "Get user authorization details"
+            pass_criteria: "Least privilege enforced"
+          - cmd: "aws iam list-attached-user-policies --user-name USER"
+            description: "Check direct policy attachments"
+            pass_criteria: "Policies attached via groups/roles"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== KSI-IAM-04 Least Privilege Authorization ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Users with AdministratorAccess ==="
+          aws iam get-account-authorization-details --filter User --query 'UserDetailList[?AttachedManagedPolicies[?PolicyName==`AdministratorAccess`]].UserName' --output table
+          echo ""
+          echo "=== Users with Direct Policy Attachments ==="
+          for user in $(aws iam list-users --query 'Users[*].UserName' --output text); do
+            policies=$(aws iam list-attached-user-policies --user-name "$user" --query 'AttachedPolicies[*].PolicyName' --output text)
+            if [ -n "$policies" ]; then
+              echo "$user: $policies"
+            fi
+          done
+          echo ""
+          echo "NOTE: Prefer role assumption over direct user policies"
+      azure:
+        commands:
+          - cmd: "az role assignment list --query '[].{Principal:principalName,Role:roleDefinitionName}'"
+            description: "List role assignments"
+            pass_criteria: "Least privilege role assignments"
+      gcp:
+        commands:
+          - cmd: "gcloud projects get-iam-policy PROJECT"
+            description: "Get project IAM policy"
+            pass_criteria: "Least privilege bindings"
+
+  KSI-IAM-05:
+    title: Identity Verification
+    description: Configure identity management to verify access needs
+    category: IAM
+    nist_mapping: [IA-12, PS-2]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-users --query 'Users[*].{UserName:UserName,CreateDate:CreateDate}'"
+            description: "List users for access review"
+            pass_criteria: "Access needs verified periodically"
+
+  KSI-IAM-06:
+    title: Automated Account Suspension
+    description: Auto-disable privileged accounts responding to suspicious activity
+    category: IAM
+    nist_mapping: [AC-2(12), AC-2(13), IR-4]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws guardduty list-findings --detector-id DETECTOR --finding-criteria '{\"Criterion\":{\"type\":{\"Eq\":[\"UnauthorizedAccess:IAMUser/ConsoleLoginSuccess.B\"]}}}'"
+            description: "Check for suspicious login findings"
+            pass_criteria: "Automated response to suspicious activity"
+
+  KSI-IAM-07:
+    title: Automated Account Lifecycle
+    description: Manage account lifecycle and privileges using automation
+    category: IAM
+    nist_mapping: [AC-2, AC-2(4)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws lambda list-functions --query 'Functions[?contains(FunctionName,`iam`) || contains(FunctionName,`access`)].FunctionName'"
+            description: "Check for IAM automation functions"
+            pass_criteria: "Account lifecycle automated"
+
+  # ============================================================================
+  # KSI-INR: Incident Response
+  # ============================================================================
+  KSI-INR-01:
+    title: Documented Incident Procedures
+    description: Always follow documented incident response procedures
+    category: INR
+    nist_mapping: [IR-1, IR-4, IR-8]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm-incidents list-response-plans"
+            description: "List incident response plans"
+            pass_criteria: "Response plans documented"
+          - cmd: "aws ssm list-documents --document-filter-list key=DocumentType,value=Automation --query 'DocumentIdentifiers[?contains(Name,`incident`)].Name'"
+            description: "List incident automation"
+            pass_criteria: "Incident procedures automated"
+
+  KSI-INR-02:
+    title: Incident Logging and Review
+    description: Maintain incident logs and review for patterns/vulnerabilities
+    category: INR
+    nist_mapping: [IR-5, IR-6]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm-incidents list-incident-records"
+            description: "List incident records"
+            pass_criteria: "Incidents logged and tracked"
+
+  KSI-INR-03:
+    title: After-Action Reports
+    description: Generate after-action reports and incorporate lessons learned
+    category: INR
+    nist_mapping: [IR-4(4), IR-6(1)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm-incidents list-incident-records --filters key=status,value=RESOLVED"
+            description: "List resolved incidents"
+            pass_criteria: "Post-incident reviews conducted"
+
+  # ============================================================================
+  # KSI-MLA: Monitoring, Logging, and Auditing
+  # ============================================================================
+  KSI-MLA-01:
+    title: Centralized Logging (SIEM)
+    description: Operate SIEM or similar for centralized tamper-resistant logging
+    category: MLA
+    nist_mapping: [AU-4, AU-6, SI-4]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail describe-trails"
+            description: "Check CloudTrail configuration"
+            pass_criteria: "Multi-region trail enabled"
+          - cmd: "aws logs describe-log-groups --query 'logGroups[*].{Name:logGroupName,RetentionDays:retentionInDays}'"
+            description: "List CloudWatch log groups"
+            pass_criteria: "Centralized logging configured"
+          - cmd: "aws securitylake list-data-lakes"
+            description: "Check Security Lake"
+            pass_criteria: "Security Lake for SIEM integration"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== KSI-MLA-01 Centralized Logging ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== CloudTrail Configuration ==="
+          aws cloudtrail describe-trails --query 'trailList[*].{Name:Name,IsMultiRegion:IsMultiRegionTrail,LogValidation:LogFileValidationEnabled,S3Bucket:S3BucketName}' --output table
+          echo ""
+          echo "=== CloudWatch Log Groups ==="
+          aws logs describe-log-groups --query 'logGroups[*].{Name:logGroupName,RetentionDays:retentionInDays}' --output table
+          echo ""
+          echo "=== Security Lake Status ==="
+          aws securitylake list-data-lakes 2>/dev/null || echo "Security Lake not configured"
+      azure:
+        commands:
+          - cmd: "az monitor log-analytics workspace list"
+            description: "List Log Analytics workspaces"
+            pass_criteria: "Centralized logging configured"
+      gcp:
+        commands:
+          - cmd: "gcloud logging sinks list"
+            description: "List logging sinks"
+            pass_criteria: "Logs exported to central location"
+
+  KSI-MLA-02:
+    title: Regular Log Review
+    description: Regularly review and audit logs
+    category: MLA
+    nist_mapping: [AU-6, AU-6(1)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudwatch describe-alarms --state-value ALARM"
+            description: "Check active alarms"
+            pass_criteria: "Alerting on suspicious activity"
+
+  KSI-MLA-05:
+    title: Infrastructure as Code Evaluation
+    description: Perform Infrastructure as Code evaluation and testing
+    category: MLA
+    nist_mapping: [CM-4, SA-11]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudformation list-stacks"
+            description: "List CloudFormation stacks"
+            pass_criteria: "Infrastructure managed as code"
+
+  KSI-MLA-07:
+    title: Monitored Resource List
+    description: Maintain lists of monitored resources and event types
+    category: MLA
+    nist_mapping: [AU-2, CM-8]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws config describe-configuration-recorders"
+            description: "Check Config recorders"
+            pass_criteria: "Resources monitored for changes"
+          - cmd: "aws resourcegroupstaggingapi get-resources"
+            description: "List tagged resources"
+            pass_criteria: "Resources inventoried"
+
+  KSI-MLA-08:
+    title: Least Privilege Log Access
+    description: Apply least-privileged access to log data per sensitivity levels
+    category: MLA
+    nist_mapping: [AU-9, AU-9(4)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws logs describe-resource-policies"
+            description: "Check log resource policies"
+            pass_criteria: "Log access restricted"
+
+  # ============================================================================
+  # KSI-PIY: Policy and Inventory
+  # ============================================================================
+  KSI-PIY-01:
+    title: Real-Time Inventory
+    description: Auto-maintain real-time inventories from authoritative sources
+    category: PIY
+    nist_mapping: [CM-8, PM-5]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws resourcegroupstaggingapi get-resources"
+            description: "List all tagged resources"
+            pass_criteria: "Resources inventoried"
+          - cmd: "aws ssm describe-instance-information"
+            description: "List managed instances"
+            pass_criteria: "Instances in inventory"
+          - cmd: "aws config describe-configuration-aggregators"
+            description: "Check Config aggregators"
+            pass_criteria: "Multi-account inventory aggregated"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== KSI-PIY-01 Real-Time Inventory ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Resource Count by Type ==="
+          aws resourcegroupstaggingapi get-resources --query 'ResourceTagMappingList[*].ResourceARN' --output text | cut -d: -f6 | sort | uniq -c | sort -rn
+          echo ""
+          echo "=== SSM Managed Instances ==="
+          aws ssm describe-instance-information --query 'InstanceInformationList[*].{InstanceId:InstanceId,PingStatus:PingStatus,AgentVersion:AgentVersion}' --output table
+      azure:
+        commands:
+          - cmd: "az resource list --query '[].{Name:name,Type:type}'"
+            description: "List all resources"
+            pass_criteria: "Resources inventoried"
+      gcp:
+        commands:
+          - cmd: "gcloud asset search-all-resources"
+            description: "Search all resources"
+            pass_criteria: "Resources inventoried"
+
+  KSI-PIY-02:
+    title: Security Documentation
+    description: Document security objectives and requirements per resource
+    category: PIY
+    nist_mapping: [PL-2, PL-7]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws resourcegroupstaggingapi get-resources --tag-filters Key=SecurityClassification"
+            description: "Find security-classified resources"
+            pass_criteria: "Resources tagged with security classification"
+
+fedramp_20x_reference:
+  description: Reference to FedRAMP 20x machine-readable documentation
+  repository: https://github.com/FedRAMP/docs
+  key_files:
+    - FRMR.KSI.key-security-indicators.json
+    - FRMR.AFR-04.vulnerability-detection-and-response.json
+    - FRMR.AFR-07.recommended-secure-configuration.json

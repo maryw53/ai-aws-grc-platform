@@ -1,0 +1,145 @@
+name: NIST 800-53
+version: Rev 5
+description: Security and Privacy Controls for Information Systems and Organizations
+
+controls:
+  AC-2:
+    title: Account Management
+    description: Manage information system accounts, including establishing, activating, modifying, disabling, and removing accounts.
+    category: Access Control
+    keywords:
+      - account management
+      - user accounts
+      - provisioning
+
+  AC-3:
+    title: Access Enforcement
+    description: The information system enforces approved authorizations for logical access to information and system resources.
+    category: Access Control
+    keywords:
+      - access enforcement
+      - authorization
+      - permissions
+
+  AC-4:
+    title: Information Flow Enforcement
+    description: The information system enforces approved authorizations for controlling the flow of information within the system and between interconnected systems.
+    category: Access Control
+    keywords:
+      - network policy
+      - firewall
+      - segmentation
+
+  AC-6:
+    title: Least Privilege
+    description: The organization employs the principle of least privilege, allowing only authorized accesses for users which are necessary to accomplish assigned tasks.
+    category: Access Control
+    keywords:
+      - least privilege
+      - minimal access
+      - need to know
+
+  AU-2:
+    title: Event Logging
+    description: Identify the types of events that the system is capable of logging in support of the audit function.
+    category: Audit and Accountability
+    keywords:
+      - logging
+      - audit log
+      - event logging
+
+  AU-3:
+    title: Content of Audit Records
+    description: Ensure that audit records contain information that establishes the what, when, where, source, outcome, and identity.
+    category: Audit and Accountability
+    keywords:
+      - audit content
+      - log fields
+
+  AU-6:
+    title: Audit Record Review, Analysis, and Reporting
+    description: Review and analyze information system audit records for indications of inappropriate or unusual activity.
+    category: Audit and Accountability
+    keywords:
+      - log review
+      - siem
+      - monitoring
+
+  CM-2:
+    title: Baseline Configuration
+    description: Develop, document, and maintain a current baseline configuration of the information system.
+    category: Configuration Management
+    keywords:
+      - baseline
+      - configuration
+      - hardening
+
+  CM-6:
+    title: Configuration Settings
+    description: Establish and document configuration settings for information technology products employed within the information system.
+    category: Configuration Management
+    keywords:
+      - configuration settings
+      - security configuration
+
+  IA-2:
+    title: Identification and Authentication
+    description: The information system uniquely identifies and authenticates organizational users.
+    category: Identification and Authentication
+    keywords:
+      - authentication
+      - mfa
+      - identity
+
+  IA-5:
+    title: Authenticator Management
+    description: The organization manages information system authenticators by verifying the identity of the individual.
+    category: Identification and Authentication
+    keywords:
+      - password
+      - credential
+      - authenticator
+
+  SC-8:
+    title: Transmission Confidentiality and Integrity
+    description: The information system protects the confidentiality and integrity of transmitted information.
+    category: System and Communications Protection
+    keywords:
+      - tls
+      - ssl
+      - encryption in transit
+
+  SC-12:
+    title: Cryptographic Key Establishment and Management
+    description: The organization establishes and manages cryptographic keys for required cryptography employed within the information system.
+    category: System and Communications Protection
+    keywords:
+      - kms
+      - key management
+      - cryptographic keys
+
+  SC-13:
+    title: Cryptographic Protection
+    description: The information system implements cryptographic mechanisms to prevent unauthorized disclosure of information and detect changes to information.
+    category: System and Communications Protection
+    keywords:
+      - encryption
+      - cryptography
+
+  SC-28:
+    title: Protection of Information at Rest
+    description: The information system protects the confidentiality and integrity of information at rest.
+    category: System and Communications Protection
+    keywords:
+      - encryption at rest
+      - storage encryption
+      - data at rest
+
+  SI-4:
+    title: Information System Monitoring
+    description: The organization monitors the information system to detect attacks and indicators of potential attacks.
+    category: System and Information Integrity
+    keywords:
+      - monitoring
+      - ids
+      - detection

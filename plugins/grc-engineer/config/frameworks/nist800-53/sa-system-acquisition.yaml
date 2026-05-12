@@ -1,0 +1,345 @@
+name: NIST 800-53 SA - System and Services Acquisition
+family: SA
+description: Controls for acquisition, development, and supply chain security
+version: Rev 5
+
+controls:
+  SA-1:
+    title: Policy and Procedures
+    description: |
+      Develop, document, and disseminate system and services acquisition policy and procedures.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws servicecatalog list-portfolios"
+            description: "Check Service Catalog for approved services"
+            pass_criteria: "Service Catalog governs acquisitions"
+
+  SA-2:
+    title: Allocation of Resources
+    description: |
+      Determine the high-level information security and privacy requirements.
+      Determine, document, and allocate resources required to protect the system.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws budgets describe-budgets --account-id ACCOUNT_ID"
+            description: "Check budgets for security resources"
+            pass_criteria: "Security budget is allocated"
+          - cmd: "aws ce get-cost-and-usage --time-period Start=START,End=END --granularity MONTHLY --metrics BlendedCost --filter '{\"Tags\":{\"Key\":\"Department\",\"Values\":[\"Security\"]}}'"
+            description: "Check security spending"
+            pass_criteria: "Security resources are funded"
+      azure:
+        commands:
+          - cmd: "az consumption budget list"
+            description: "List budgets"
+            pass_criteria: "Security budget exists"
+
+  SA-3:
+    title: System Development Life Cycle
+    description: |
+      Acquire, develop, and manage the system using a system development life cycle
+      that incorporates information security and privacy considerations.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws codepipeline list-pipelines"
+            description: "List CI/CD pipelines"
+            pass_criteria: "SDLC is automated"
+          - cmd: "aws codecommit list-repositories"
+            description: "List code repositories"
+            pass_criteria: "Code is version controlled"
+          - cmd: "aws codebuild list-projects"
+            description: "List build projects"
+            pass_criteria: "Builds are automated"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== SA-3 System Development Life Cycle ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== CI/CD Pipelines ==="
+          aws codepipeline list-pipelines --query 'pipelines[*].name' --output table
+          echo ""
+          echo "=== Code Repositories ==="
+          aws codecommit list-repositories --query 'repositories[*].repositoryName' --output table
+          echo ""
+          echo "=== Build Projects ==="
+          aws codebuild list-projects --output table
+      azure:
+        commands:
+          - cmd: "az devops project list"
+            description: "List DevOps projects"
+            pass_criteria: "SDLC is in DevOps"
+          - cmd: "az pipelines list"
+            description: "List pipelines"
+            pass_criteria: "CI/CD is automated"
+      gcp:
+        commands:
+          - cmd: "gcloud builds list --limit=10"
+            description: "List Cloud Build history"
+            pass_criteria: "Builds are automated"
+          - cmd: "gcloud source repos list"
+            description: "List source repositories"
+            pass_criteria: "Code is version controlled"
+
+  SA-4:
+    title: Acquisition Process
+    description: |
+      Include security and privacy functional requirements in the acquisition contract.
+      Include design and implementation requirements. Include documentation requirements.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws marketplace-catalog list-entities --catalog AWSMarketplace --entity-type Offer"
+            description: "List Marketplace offers"
+            pass_criteria: "Marketplace acquisitions are documented"
+          - cmd: "aws license-manager list-licenses"
+            description: "List licenses"
+            pass_criteria: "Software licenses are tracked"
+      azure:
+        commands:
+          - cmd: "az vm image list-publishers --location LOCATION --query '[].name' | head -20"
+            description: "List image publishers"
+            pass_criteria: "Image sources are documented"
+
+  SA-4(9):
+    title: Functions, Ports, Protocols, and Services in Use
+    description: |
+      Require the developer to identify early in the SDLC the functions, ports, protocols, and services
+      intended for organizational use.
+    baseline: [moderate, high]
+    parent: SA-4
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ec2 describe-security-groups --query 'SecurityGroups[*].{GroupId:GroupId,Ports:IpPermissions}'"
+            description: "Document security group ports"
+            pass_criteria: "Ports are documented"
+          - cmd: "aws elbv2 describe-listeners --query 'Listeners[*].{Port:Port,Protocol:Protocol}'"
+            description: "Document load balancer ports"
+            pass_criteria: "Protocols are documented"
+      azure:
+        commands:
+          - cmd: "az network nsg rule list --nsg-name NSG --resource-group RG"
+            description: "Document NSG rules"
+            pass_criteria: "Ports are documented"
+
+  SA-8:
+    title: Security and Privacy Engineering Principles
+    description: |
+      Apply security and privacy engineering principles in the specification, design, development,
+      implementation, and modification of the system.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudformation describe-stacks"
+            description: "Check IaC for engineering principles"
+            pass_criteria: "Infrastructure as Code is used"
+          - cmd: "aws codebuild batch-get-projects --names PROJECT"
+            description: "Check build project configuration"
+            pass_criteria: "Security scanning in build"
+      azure:
+        commands:
+          - cmd: "az deployment group list --resource-group RG"
+            description: "Check ARM deployments"
+            pass_criteria: "IaC is used"
+      gcp:
+        commands:
+          - cmd: "gcloud deployment-manager deployments list"
+            description: "Check Deployment Manager"
+            pass_criteria: "IaC is used"
+
+  SA-9:
+    title: External System Services
+    description: |
+      Require that providers of external system services comply with organizational security
+      and privacy requirements. Define and document oversight and user roles and responsibilities.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws organizations list-aws-service-access-for-organization"
+            description: "List AWS service integrations"
+            pass_criteria: "Service integrations are documented"
+          - cmd: "aws ram list-resources --resource-owner SELF"
+            description: "List shared resources"
+            pass_criteria: "External access is documented"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== SA-9 External System Services ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== AWS Service Integrations ==="
+          aws organizations list-aws-service-access-for-organization --query 'EnabledServicePrincipals[*].{Service:ServicePrincipal,Enabled:DateEnabled}' --output table 2>/dev/null || echo "Not an organization master"
+          echo ""
+          echo "=== Shared Resources (RAM) ==="
+          aws ram list-resources --resource-owner SELF --query 'resources[*].{Arn:arn,Type:type}' --output table
+          echo ""
+          echo "=== Third-Party Integrations ==="
+          aws iam list-roles --query 'Roles[?contains(AssumeRolePolicyDocument|to_string(@),`sts:ExternalId`)].RoleName' --output table
+      azure:
+        commands:
+          - cmd: "az ad app list --query '[?signInAudience!=`AzureADMyOrg`].displayName'"
+            description: "List external apps"
+            pass_criteria: "External services are documented"
+      gcp:
+        commands:
+          - cmd: "gcloud iam workload-identity-pools list --location=global"
+            description: "List external identity pools"
+            pass_criteria: "External services are documented"
+
+  SA-10:
+    title: Developer Configuration Management
+    description: |
+      Require the developer to perform configuration management during development.
+      Document, manage, and control changes. Implement only approved changes.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws codecommit list-repositories"
+            description: "Check version control"
+            pass_criteria: "Code is version controlled"
+          - cmd: "aws codecommit get-branch --repository-name REPO --branch-name main"
+            description: "Check branch protection"
+            pass_criteria: "Main branch is protected"
+      azure:
+        commands:
+          - cmd: "az repos list"
+            description: "List Azure Repos"
+            pass_criteria: "Code is version controlled"
+      gcp:
+        commands:
+          - cmd: "gcloud source repos list"
+            description: "List Cloud Source Repos"
+            pass_criteria: "Code is version controlled"
+
+  SA-11:
+    title: Developer Testing and Evaluation
+    description: |
+      Require the developer to create a test and evaluation plan.
+      Implement the plan. Document the results.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws codebuild list-projects"
+            description: "List build projects (include tests)"
+            pass_criteria: "Build includes testing"
+          - cmd: "aws codepipeline get-pipeline --name PIPELINE"
+            description: "Check pipeline stages for testing"
+            pass_criteria: "Pipeline includes test stage"
+      azure:
+        commands:
+          - cmd: "az pipelines list"
+            description: "List pipelines"
+            pass_criteria: "Pipelines include testing"
+      gcp:
+        commands:
+          - cmd: "gcloud builds triggers list"
+            description: "List build triggers"
+            pass_criteria: "Triggers include testing"
+
+  SA-11(1):
+    title: Static Code Analysis
+    description: |
+      Require the developer to employ static code analysis tools.
+    baseline: [moderate, high]
+    parent: SA-11
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws codeguru-reviewer list-repository-associations"
+            description: "Check CodeGuru Reviewer"
+            pass_criteria: "Static analysis is configured"
+          - cmd: "aws inspector2 list-coverage --filter-criteria '{\"resourceType\":[{\"comparison\":\"EQUALS\",\"value\":\"LAMBDA_FUNCTION\"}]}'"
+            description: "Check Lambda code scanning"
+            pass_criteria: "Code is scanned"
+      azure:
+        commands:
+          - cmd: "az security secure-score-controls list"
+            description: "Check security controls"
+            pass_criteria: "Code security is assessed"
+
+  SA-11(2):
+    title: Threat Modeling and Vulnerability Analysis
+    description: |
+      Require the developer to perform threat modeling and vulnerability analysis.
+    baseline: [high]
+    parent: SA-11
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws inspector2 list-findings --filter-criteria '{\"findingType\":[{\"comparison\":\"EQUALS\",\"value\":\"PACKAGE_VULNERABILITY\"}]}'"
+            description: "Check for vulnerability findings"
+            pass_criteria: "Vulnerabilities are analyzed"
+
+  SA-15:
+    title: Development Process, Standards, and Tools
+    description: |
+      Require the developer to follow a documented development process.
+      Require specific development tools. Document tool options.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws codepipeline list-pipelines"
+            description: "List development pipelines"
+            pass_criteria: "Standard development process"
+          - cmd: "aws codeartifact list-repositories"
+            description: "List artifact repositories"
+            pass_criteria: "Standard tool repositories"
+      azure:
+        commands:
+          - cmd: "az devops project list"
+            description: "List DevOps projects"
+            pass_criteria: "Standard development platform"
+
+  SA-22:
+    title: Unsupported System Components
+    description: |
+      Replace system components when support for the components is no longer available.
+      Provide justification and approval for continued use of unsupported components.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws lambda list-functions --query 'Functions[*].{Name:FunctionName,Runtime:Runtime}'"
+            description: "Check Lambda runtimes for EOL"
+            pass_criteria: "No deprecated runtimes"
+          - cmd: "aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,Engine:Engine,EngineVersion:EngineVersion}'"
+            description: "Check RDS versions"
+            pass_criteria: "No unsupported database versions"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== SA-22 Unsupported System Components ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Lambda Runtimes ==="
+          aws lambda list-functions --query 'Functions[*].{Name:FunctionName,Runtime:Runtime}' --output table
+          echo ""
+          echo "=== RDS Engine Versions ==="
+          aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,Engine:Engine,Version:EngineVersion}' --output table
+          echo ""
+          echo "=== EC2 AMI Ages ==="
+          aws ec2 describe-instances --query 'Reservations[*].Instances[*].{Id:InstanceId,ImageId:ImageId}' --output table
+      azure:
+        commands:
+          - cmd: "az functionapp list --query '[].{Name:name,Runtime:siteConfig.linuxFxVersion}'"
+            description: "Check function runtimes"
+            pass_criteria: "No deprecated runtimes"
+      gcp:
+        commands:
+          - cmd: "gcloud functions list --format='table(name,runtime)'"
+            description: "Check function runtimes"
+            pass_criteria: "No deprecated runtimes"
+      kubernetes:
+        commands:
+          - cmd: "kubectl version"
+            description: "Check Kubernetes version"
+            pass_criteria: "Kubernetes version is supported"

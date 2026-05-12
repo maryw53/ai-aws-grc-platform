@@ -1,0 +1,489 @@
+name: PBMM - Protected B, Medium Integrity, Medium Availability
+version: "2024"
+description: |
+  Canadian Government cloud security certification based on ITSG-33.
+  Required for Government of Canada departments and organizations handling Protected B data.
+  Assessed by the Canadian Centre for Cyber Security (CCCS) against the Medium Cloud Security Profile.
+
+applicable_to:
+  - Government of Canada departments and agencies
+  - Provincial and territorial government systems
+  - Healthcare systems handling provincial health data
+  - Organizations with Government of Canada contracts
+  - Critical infrastructure operators
+
+base_standards:
+  - ITSG-33 (IT Security Risk Management - A Lifecycle Approach)
+  - CCCS Medium Cloud Security Profile
+  - NIST SP 800-53 (mapped controls)
+  - CSE ITSP.50.103 (Cloud Security Categorization)
+
+classification_levels:
+  unclassified:
+    description: Public information with no security requirements
+    controls: Basic security hygiene
+  protected_a:
+    description: Low sensitivity, limited injury if compromised
+    controls: Basic ITSG-33 controls
+  protected_b:
+    description: Sensitive information causing serious injury if compromised
+    controls: Full PBMM profile (this document)
+  protected_c:
+    description: Extremely sensitive, grave injury if compromised
+    controls: Enhanced controls beyond PBMM
+
+canadian_regions:
+  aws:
+    - ca-central-1    # Montreal
+    - ca-west-1       # Calgary
+  azure:
+    - canadacentral   # Toronto
+    - canadaeast      # Quebec City
+  gcp:
+    - northamerica-northeast1  # Montreal
+    - northamerica-northeast2  # Toronto
+
+controls:
+  PBMM-DATA-1:
+    title: Canadian Data Residency
+    description: All Protected B data must reside exclusively in Canadian geographic regions
+    nist_mapping: [SA-9(5), SC-8]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws s3api list-buckets --query 'Buckets[*].Name' --output text"
+            description: "List all S3 buckets"
+            pass_criteria: "All buckets identified for residency check"
+          - cmd: "aws ec2 describe-instances --query 'Reservations[*].Instances[*].{Id:InstanceId,AZ:Placement.AvailabilityZone}' --output table"
+            description: "Check EC2 instance locations"
+            pass_criteria: "All instances in ca-central-1 or ca-west-1"
+          - cmd: "aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,AZ:AvailabilityZone}' --output table"
+            description: "Check RDS instance locations"
+            pass_criteria: "All RDS instances in Canadian regions"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PBMM-DATA-1 Canadian Data Residency ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== S3 Bucket Locations ==="
+          for bucket in $(aws s3api list-buckets --query 'Buckets[*].Name' --output text); do
+            location=$(aws s3api get-bucket-location --bucket "$bucket" --query 'LocationConstraint' --output text)
+            if [[ "$location" == "ca-central-1" ]] || [[ "$location" == "ca-west-1" ]]; then
+              echo "PASS: $bucket -> $location"
+            else
+              echo "FAIL: $bucket -> $location (NOT Canadian)"
+            fi
+          done
+          echo ""
+          echo "=== EC2 Instance Locations ==="
+          aws ec2 describe-instances --query 'Reservations[*].Instances[*].{Id:InstanceId,AZ:Placement.AvailabilityZone,State:State.Name}' --output table
+          echo ""
+          echo "=== RDS Instance Locations ==="
+          aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,AZ:AvailabilityZone,Engine:Engine}' --output table
+          echo ""
+          echo "NOTE: All Protected B data MUST reside in ca-central-1 (Montreal) or ca-west-1 (Calgary)"
+      azure:
+        commands:
+          - cmd: "az resource list --query '[].{Name:name,Location:location,Type:type}' --output table"
+            description: "List all resources with locations"
+            pass_criteria: "All resources in canadacentral or canadaeast"
+          - cmd: "az storage account list --query '[].{Name:name,Location:location}' --output table"
+            description: "Check storage account locations"
+            pass_criteria: "All storage in Canadian regions"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PBMM-DATA-1 Canadian Data Residency (Azure) ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Resource Locations ==="
+          az resource list --query '[].{Name:name,Location:location,Type:type}' --output table
+          echo ""
+          echo "=== Non-Canadian Resources ==="
+          az resource list --query "[?location!='canadacentral' && location!='canadaeast'].{Name:name,Location:location}" --output table
+      gcp:
+        commands:
+          - cmd: "gcloud storage buckets list --format='table(name,location)'"
+            description: "List bucket locations"
+            pass_criteria: "All buckets in northamerica-northeast1 or northamerica-northeast2"
+          - cmd: "gcloud compute instances list --format='table(name,zone)'"
+            description: "List instance zones"
+            pass_criteria: "All instances in Canadian zones"
+
+  PBMM-AC-1:
+    title: Access Control Policy and Procedures
+    description: Establish and maintain access control policies aligned with ITSG-33
+    nist_mapping: [AC-1, AC-2]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam get-account-password-policy"
+            description: "Check password policy configuration"
+            pass_criteria: "Strong password policy enforced"
+          - cmd: "aws iam list-users --query 'Users[*].{UserName:UserName,CreateDate:CreateDate}' --output table"
+            description: "List all IAM users"
+            pass_criteria: "All users documented and authorized"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PBMM-AC-1 Access Control ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Password Policy ==="
+          aws iam get-account-password-policy --output table 2>/dev/null || echo "No custom password policy"
+          echo ""
+          echo "=== IAM Users ==="
+          aws iam list-users --query 'Users[*].{UserName:UserName,CreateDate:CreateDate,PasswordLastUsed:PasswordLastUsed}' --output table
+      azure:
+        commands:
+          - cmd: "az ad user list --query '[].{DisplayName:displayName,UserPrincipalName:userPrincipalName}' --output table"
+            description: "List Azure AD users"
+            pass_criteria: "All users documented"
+      gcp:
+        commands:
+          - cmd: "gcloud iam service-accounts list"
+            description: "List service accounts"
+            pass_criteria: "Service accounts documented"
+
+  PBMM-AC-2:
+    title: Multi-Factor Authentication
+    description: Enforce MFA for all users accessing Protected B systems
+    nist_mapping: [IA-2(1), IA-2(2)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-virtual-mfa-devices --query 'VirtualMFADevices[*].{User:User.UserName,SerialNumber:SerialNumber}' --output table"
+            description: "List MFA devices"
+            pass_criteria: "MFA enabled for all users"
+          - cmd: "aws iam generate-credential-report && sleep 3 && aws iam get-credential-report --query 'Content' --output text | base64 -d | cut -d',' -f1,8"
+            description: "Check MFA status in credential report"
+            pass_criteria: "All users have MFA enabled"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PBMM-AC-2 Multi-Factor Authentication ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== MFA Devices ==="
+          aws iam list-virtual-mfa-devices --query 'VirtualMFADevices[*].{User:User.UserName,SerialNumber:SerialNumber}' --output table
+          echo ""
+          echo "=== Users Without MFA ==="
+          aws iam generate-credential-report >/dev/null 2>&1
+          sleep 5
+          aws iam get-credential-report --query 'Content' --output text | base64 -d | awk -F',' 'NR>1 && $8=="false" {print $1": NO MFA"}'
+      azure:
+        commands:
+          - cmd: "az ad conditional-access policy list --query '[].{Name:displayName,State:state}' --output table"
+            description: "List MFA enforcement policies"
+            pass_criteria: "MFA policies active"
+      gcp:
+        commands:
+          - cmd: "gcloud identity groups list"
+            description: "List identity groups for 2SV enforcement"
+            pass_criteria: "2-Step Verification enforced"
+
+  PBMM-AU-1:
+    title: Audit and Accountability
+    description: Comprehensive audit logging per ITSG-33 requirements
+    nist_mapping: [AU-2, AU-3, AU-6]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail describe-trails --query 'trailList[*].{Name:Name,IsMultiRegion:IsMultiRegionTrail,IsOrganization:IsOrganizationTrail}' --output table"
+            description: "Check CloudTrail configuration"
+            pass_criteria: "Multi-region trail enabled"
+          - cmd: "aws logs describe-log-groups --query 'logGroups[*].{Name:logGroupName,RetentionDays:retentionInDays}' --output table"
+            description: "Check log retention"
+            pass_criteria: "Logs retained per GC requirements (minimum 2 years)"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PBMM-AU-1 Audit and Accountability ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== CloudTrail Configuration ==="
+          aws cloudtrail describe-trails --query 'trailList[*].{Name:Name,IsMultiRegion:IsMultiRegionTrail,LogFileValidation:LogFileValidationEnabled}' --output table
+          echo ""
+          echo "=== Log Group Retention ==="
+          aws logs describe-log-groups --query 'logGroups[*].{Name:logGroupName,RetentionDays:retentionInDays}' --output table
+          echo ""
+          echo "NOTE: GC requires minimum 2 years (730 days) log retention for Protected B"
+      azure:
+        commands:
+          - cmd: "az monitor activity-log list --max-events 5 --query '[].{Time:eventTimestamp,Operation:operationName.localizedValue}' --output table"
+            description: "Check activity logging"
+            pass_criteria: "Activity logs enabled"
+      gcp:
+        commands:
+          - cmd: "gcloud logging sinks list"
+            description: "List logging sinks"
+            pass_criteria: "Logging configured"
+
+  PBMM-SC-1:
+    title: Encryption at Rest
+    description: All Protected B data must be encrypted at rest using FIPS 140-2/3 validated cryptography
+    nist_mapping: [SC-28, SC-28(1)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws kms list-keys --query 'Keys[*].KeyId' --output table"
+            description: "List KMS keys"
+            pass_criteria: "KMS keys configured for encryption"
+          - cmd: "aws ec2 describe-volumes --query 'Volumes[*].{VolumeId:VolumeId,Encrypted:Encrypted,KmsKeyId:KmsKeyId}' --output table"
+            description: "Check EBS encryption"
+            pass_criteria: "All volumes encrypted"
+          - cmd: "aws ec2 get-ebs-encryption-by-default"
+            description: "Check EBS default encryption"
+            pass_criteria: "Default encryption enabled"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PBMM-SC-1 Encryption at Rest ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== EBS Default Encryption ==="
+          aws ec2 get-ebs-encryption-by-default --output table
+          echo ""
+          echo "=== EBS Volume Encryption Status ==="
+          aws ec2 describe-volumes --query 'Volumes[*].{VolumeId:VolumeId,Encrypted:Encrypted}' --output table
+          echo ""
+          echo "=== Unencrypted Volumes ==="
+          aws ec2 describe-volumes --query 'Volumes[?Encrypted==`false`].VolumeId' --output table
+          echo ""
+          echo "=== S3 Bucket Encryption ==="
+          for bucket in $(aws s3api list-buckets --query 'Buckets[*].Name' --output text); do
+            echo -n "$bucket: "
+            aws s3api get-bucket-encryption --bucket "$bucket" 2>/dev/null && echo "Encrypted" || echo "NOT ENCRYPTED"
+          done
+          echo ""
+          echo "NOTE: PBMM requires FIPS 140-2 Level 2+ validated encryption"
+      azure:
+        commands:
+          - cmd: "az keyvault list --query '[].{Name:name,EnableSoftDelete:enableSoftDelete}' --output table"
+            description: "List Key Vaults"
+            pass_criteria: "Key Vault configured"
+          - cmd: "az disk list --query '[].{Name:name,Encryption:encryption.type}' --output table"
+            description: "Check disk encryption"
+            pass_criteria: "All disks encrypted"
+      gcp:
+        commands:
+          - cmd: "gcloud kms keyrings list --location=northamerica-northeast1"
+            description: "List KMS key rings in Montreal"
+            pass_criteria: "CMEK configured"
+
+  PBMM-SC-2:
+    title: Encryption in Transit
+    description: All data in transit must be encrypted using TLS 1.2 or higher
+    nist_mapping: [SC-8, SC-8(1)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws elbv2 describe-listeners --query 'Listeners[*].{Protocol:Protocol,SslPolicy:SslPolicy}' --output table"
+            description: "Check ALB TLS configuration"
+            pass_criteria: "TLS 1.2+ enforced"
+          - cmd: "aws cloudfront list-distributions --query 'DistributionList.Items[*].{Id:Id,MinTLS:ViewerCertificate.MinimumProtocolVersion}' --output table"
+            description: "Check CloudFront TLS settings"
+            pass_criteria: "TLSv1.2_2021 or higher"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PBMM-SC-2 Encryption in Transit ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Load Balancer TLS Policies ==="
+          for lb in $(aws elbv2 describe-load-balancers --query 'LoadBalancers[*].LoadBalancerArn' --output text); do
+            echo "Load Balancer: $lb"
+            aws elbv2 describe-listeners --load-balancer-arn "$lb" --query 'Listeners[*].{Protocol:Protocol,Port:Port,SslPolicy:SslPolicy}' --output table
+          done
+          echo ""
+          echo "=== CloudFront Distributions ==="
+          aws cloudfront list-distributions --query 'DistributionList.Items[*].{Id:Id,MinTLS:ViewerCertificate.MinimumProtocolVersion}' --output table 2>/dev/null || echo "No CloudFront distributions"
+      azure:
+        commands:
+          - cmd: "az webapp list --query '[].{Name:name,HttpsOnly:httpsOnly,MinTlsVersion:siteConfig.minTlsVersion}' --output table"
+            description: "Check web app TLS settings"
+            pass_criteria: "HTTPS only, TLS 1.2+"
+      gcp:
+        commands:
+          - cmd: "gcloud compute ssl-policies list"
+            description: "List SSL policies"
+            pass_criteria: "Modern TLS policy enforced"
+
+  PBMM-SC-3:
+    title: Network Segmentation
+    description: Implement network segmentation to isolate Protected B workloads
+    nist_mapping: [SC-7, SC-7(5)]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ec2 describe-vpcs --query 'Vpcs[*].{VpcId:VpcId,CidrBlock:CidrBlock,IsDefault:IsDefault}' --output table"
+            description: "List VPCs"
+            pass_criteria: "Dedicated VPC for Protected B"
+          - cmd: "aws ec2 describe-security-groups --query 'SecurityGroups[*].{GroupId:GroupId,GroupName:GroupName,VpcId:VpcId}' --output table"
+            description: "List security groups"
+            pass_criteria: "Security groups configured"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PBMM-SC-3 Network Segmentation ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== VPCs ==="
+          aws ec2 describe-vpcs --query 'Vpcs[*].{VpcId:VpcId,CidrBlock:CidrBlock,IsDefault:IsDefault,Tags:Tags}' --output table
+          echo ""
+          echo "=== Security Groups with Open Ingress ==="
+          aws ec2 describe-security-groups --query 'SecurityGroups[?IpPermissions[?IpRanges[?CidrIp==`0.0.0.0/0`]]].{GroupId:GroupId,GroupName:GroupName}' --output table
+          echo ""
+          echo "=== Network ACLs ==="
+          aws ec2 describe-network-acls --query 'NetworkAcls[*].{AclId:NetworkAclId,VpcId:VpcId,IsDefault:IsDefault}' --output table
+      azure:
+        commands:
+          - cmd: "az network vnet list --query '[].{Name:name,AddressSpace:addressSpace.addressPrefixes}' --output table"
+            description: "List VNets"
+            pass_criteria: "Network segmentation configured"
+          - cmd: "az network nsg list --query '[].{Name:name,Location:location}' --output table"
+            description: "List NSGs"
+            pass_criteria: "NSGs configured"
+      gcp:
+        commands:
+          - cmd: "gcloud compute networks list"
+            description: "List VPC networks"
+            pass_criteria: "Custom VPCs for Protected B"
+
+  PBMM-RA-1:
+    title: Vulnerability Management
+    description: Continuous vulnerability scanning and remediation
+    nist_mapping: [RA-5, SI-2]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws inspector2 list-findings --filter-criteria '{\"severity\":[{\"comparison\":\"EQUALS\",\"value\":\"CRITICAL\"}]}' --max-items 10 --query 'findings[*].{Title:title,Severity:severity}' --output table"
+            description: "Check for critical vulnerabilities"
+            pass_criteria: "No unmitigated critical vulnerabilities"
+          - cmd: "aws ssm describe-instance-patch-states --query 'InstancePatchStates[*].{Instance:InstanceId,Missing:MissingCount,Failed:FailedCount}' --output table"
+            description: "Check patch compliance"
+            pass_criteria: "All systems patched"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PBMM-RA-1 Vulnerability Management ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Critical Vulnerabilities ==="
+          aws inspector2 list-findings --filter-criteria '{"severity":[{"comparison":"EQUALS","value":"CRITICAL"}]}' --max-items 20 --query 'findings[*].{Title:title,Severity:severity,Status:status}' --output table 2>/dev/null || echo "Inspector not enabled"
+          echo ""
+          echo "=== Patch Compliance ==="
+          aws ssm describe-instance-patch-states --query 'InstancePatchStates[*].{Instance:InstanceId,Installed:InstalledCount,Missing:MissingCount}' --output table
+          echo ""
+          echo "NOTE: Critical vulnerabilities must be remediated within 48 hours per GC TBS guidelines"
+      azure:
+        commands:
+          - cmd: "az security assessment list --query '[?status.code==`Unhealthy`].{Name:displayName,Status:status.code}' --output table"
+            description: "Check unhealthy assessments"
+            pass_criteria: "No critical unhealthy assessments"
+      gcp:
+        commands:
+          - cmd: "gcloud scc findings list ORGANIZATION --filter='severity=CRITICAL'"
+            description: "List critical SCC findings"
+            pass_criteria: "No critical findings"
+
+  PBMM-IR-1:
+    title: Incident Response
+    description: Incident detection, response, and reporting procedures
+    nist_mapping: [IR-4, IR-6]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws guardduty list-detectors --query 'DetectorIds' --output table"
+            description: "Check GuardDuty enabled"
+            pass_criteria: "GuardDuty detector active"
+          - cmd: "aws securityhub describe-hub"
+            description: "Check Security Hub enabled"
+            pass_criteria: "Security Hub active"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PBMM-IR-1 Incident Response ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== GuardDuty Status ==="
+          DETECTOR=$(aws guardduty list-detectors --query 'DetectorIds[0]' --output text)
+          if [ "$DETECTOR" != "None" ] && [ -n "$DETECTOR" ]; then
+            aws guardduty get-detector --detector-id $DETECTOR --query '{Status:Status,FindingPublishingFrequency:FindingPublishingFrequency}'
+            echo ""
+            echo "=== Recent GuardDuty Findings ==="
+            aws guardduty list-findings --detector-id $DETECTOR --max-results 5 --query 'FindingIds' --output table
+          else
+            echo "GuardDuty NOT ENABLED - Required for PBMM"
+          fi
+          echo ""
+          echo "=== Security Hub Status ==="
+          aws securityhub describe-hub 2>/dev/null || echo "Security Hub NOT ENABLED"
+      azure:
+        commands:
+          - cmd: "az security alert list --query '[].{Name:name,Severity:severity,Status:status}' --output table"
+            description: "List security alerts"
+            pass_criteria: "Alerts being monitored"
+      gcp:
+        commands:
+          - cmd: "gcloud scc notifications list ORGANIZATION"
+            description: "List SCC notifications"
+            pass_criteria: "Notifications configured"
+
+  PBMM-CP-1:
+    title: Backup and Recovery
+    description: Data backup and disaster recovery for Protected B systems
+    nist_mapping: [CP-9, CP-10]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws backup list-backup-plans --query 'BackupPlansList[*].{Name:BackupPlanName,Id:BackupPlanId}' --output table"
+            description: "List backup plans"
+            pass_criteria: "Backup plans configured"
+          - cmd: "aws backup list-backup-jobs --by-state COMPLETED --max-results 10 --query 'BackupJobs[*].{Resource:ResourceType,Status:State}' --output table"
+            description: "Check recent backup jobs"
+            pass_criteria: "Backups completing successfully"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PBMM-CP-1 Backup and Recovery ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Backup Plans ==="
+          aws backup list-backup-plans --query 'BackupPlansList[*].{Name:BackupPlanName,Id:BackupPlanId}' --output table
+          echo ""
+          echo "=== Recent Backup Jobs ==="
+          aws backup list-backup-jobs --by-state COMPLETED --max-results 10 --query 'BackupJobs[*].{Resource:ResourceType,Status:State,Completed:CompletionDate}' --output table
+          echo ""
+          echo "=== RDS Automated Backups ==="
+          aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,BackupRetention:BackupRetentionPeriod,MultiAZ:MultiAZ}' --output table
+      azure:
+        commands:
+          - cmd: "az backup vault list --query '[].{Name:name,Location:location}' --output table"
+            description: "List backup vaults"
+            pass_criteria: "Backup vaults configured"
+      gcp:
+        commands:
+          - cmd: "gcloud compute snapshots list --format='table(name,status,sourceDisk)'"
+            description: "List snapshots"
+            pass_criteria: "Snapshots configured"
+
+certified_providers:
+  description: Cloud service providers assessed by CCCS for PBMM
+  aws:
+    certification: "CCCS Medium Cloud Security Profile assessed"
+    regions: ["ca-central-1", "ca-west-1"]
+    services_assessed: 162
+    link: "https://aws.amazon.com/compliance/cccs/"
+  azure:
+    certification: "CCCS Medium Cloud Security Profile assessed"
+    regions: ["canadacentral", "canadaeast"]
+    link: "https://learn.microsoft.com/en-us/compliance/regulatory/offering-cccs-medium"
+  gcp:
+    certification: "CCCS Medium and PBHVA assessed"
+    regions: ["northamerica-northeast1", "northamerica-northeast2"]
+    link: "https://cloud.google.com/security/compliance/protected-b"
+
+reference_documents:
+  - name: ITSG-33
+    description: IT Security Risk Management - A Lifecycle Approach
+    url: "https://www.cyber.gc.ca/en/guidance/it-security-risk-management-lifecycle-approach-itsg-33"
+  - name: Annex 4A Profile 1
+    description: Protected B / Medium Integrity / Medium Availability
+    url: "https://www.cyber.gc.ca/en/guidance/annex-4a-profile-1-protected-b-medium-integrity-medium-availability-itsg-33"
+  - name: ITSP.50.103
+    description: Cloud Security Categorization
+    url: "https://www.cyber.gc.ca/en/guidance/cloud-security-categorization-itsp50103"
+  - name: ITSM.50.100
+    description: CSP IT Security Assessment Process
+    url: "https://www.cyber.gc.ca/en/guidance/cloud-service-provider-information-technology-security-assessment-process-itsm50100"

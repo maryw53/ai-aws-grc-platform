@@ -1,0 +1,861 @@
+name: NIST 800-53 AU - Audit and Accountability
+family: AU
+description: Controls for creating, protecting, and retaining system audit records
+version: Rev 5
+
+controls:
+  AU-1:
+    title: Policy and Procedures
+    description: |
+      Develop, document, and disseminate audit and accountability policy and procedures.
+      Review and update current policy and procedures.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws organizations describe-organization"
+            description: "Verify organizational structure for policy management"
+            pass_criteria: "Organization exists with appropriate structure"
+          - cmd: "aws configservice describe-configuration-recorders"
+            description: "Check if AWS Config is recording configuration changes"
+            pass_criteria: "At least one recorder is configured and recording"
+      azure:
+        commands:
+          - cmd: "az policy definition list --query \"[?contains(displayName, 'audit')]\""
+            description: "List audit-related policy definitions"
+            pass_criteria: "Audit policies are defined and assigned"
+          - cmd: "az monitor diagnostic-settings list --resource-group RG_NAME --resource RESOURCE_NAME --resource-type TYPE"
+            description: "Check diagnostic settings for resources"
+            pass_criteria: "Diagnostic settings are configured"
+      gcp:
+        commands:
+          - cmd: "gcloud organizations get-iam-policy ORG_ID"
+            description: "Review organization IAM policy"
+            pass_criteria: "Policies are documented and appropriate"
+          - cmd: "gcloud logging sinks list"
+            description: "List logging sinks for audit log export"
+            pass_criteria: "Logging sinks are configured"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get configmaps -n kube-system | grep audit"
+            description: "Check for audit policy ConfigMaps"
+            pass_criteria: "Audit policy ConfigMap exists"
+
+  AU-2:
+    title: Event Logging
+    description: |
+      Identify the types of events that the system is capable of logging.
+      Coordinate the event logging function with other organizational entities.
+      Specify events to be logged and frequency of logging.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail describe-trails"
+            description: "List all CloudTrail trails for event logging"
+            pass_criteria: "At least one trail exists covering all regions"
+          - cmd: "aws cloudtrail get-event-selectors --trail-name TRAIL_NAME"
+            description: "Check event selectors for trail"
+            pass_criteria: "Management and data events are logged as required"
+          - cmd: "aws logs describe-log-groups"
+            description: "List CloudWatch log groups"
+            pass_criteria: "Appropriate log groups exist for application and system logs"
+          - cmd: "aws rds describe-db-instances --query 'DBInstances[*].{Name:DBInstanceIdentifier,Logging:EnabledCloudwatchLogsExports}'"
+            description: "Check RDS database logging configuration"
+            pass_criteria: "Database audit logs are enabled"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== AU-2 Event Logging Evidence ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== CloudTrail Configuration ==="
+          aws cloudtrail describe-trails --output table
+          echo ""
+          echo "=== Trail Status ==="
+          for trail in $(aws cloudtrail describe-trails --query 'trailList[].Name' --output text); do
+            echo "Trail: $trail"
+            aws cloudtrail get-trail-status --name "$trail"
+            aws cloudtrail get-event-selectors --trail-name "$trail"
+            echo "---"
+          done
+          echo ""
+          echo "=== CloudWatch Log Groups ==="
+          aws logs describe-log-groups --query 'logGroups[*].{Name:logGroupName,Retention:retentionInDays}' --output table
+      azure:
+        commands:
+          - cmd: "az monitor activity-log list --max-events 1"
+            description: "Verify Activity Log is capturing events"
+            pass_criteria: "Activity log events are being recorded"
+          - cmd: "az monitor log-analytics workspace list"
+            description: "List Log Analytics workspaces"
+            pass_criteria: "Log Analytics workspace exists for centralized logging"
+          - cmd: "az sql db audit-policy show --resource-group RG --server SERVER --name DB"
+            description: "Check SQL database audit policy"
+            pass_criteria: "Database auditing is enabled"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== AU-2 Event Logging Evidence (Azure) ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Log Analytics Workspaces ==="
+          az monitor log-analytics workspace list --output table
+          echo ""
+          echo "=== Activity Log Categories ==="
+          az monitor activity-log list --max-events 5 --query '[].{Category:category,Operation:operationName.value}' --output table
+      gcp:
+        commands:
+          - cmd: "gcloud logging logs list --limit=20"
+            description: "List available log types"
+            pass_criteria: "Required log types are available"
+          - cmd: "gcloud projects get-iam-policy PROJECT_ID --format=json | jq '.auditConfigs'"
+            description: "Check audit logging configuration"
+            pass_criteria: "Audit configs are set for required services"
+          - cmd: "gcloud sql instances describe INSTANCE --format='value(settings.databaseFlags)'"
+            description: "Check Cloud SQL audit logging flags"
+            pass_criteria: "Database logging flags are enabled"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== AU-2 Event Logging Evidence (GCP) ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Available Logs ==="
+          gcloud logging logs list --limit=20
+          echo ""
+          echo "=== Audit Configuration ==="
+          gcloud projects get-iam-policy $GOOGLE_CLOUD_PROJECT --format=json | jq '.auditConfigs'
+      kubernetes:
+        commands:
+          - cmd: "kubectl get pods -n kube-system -l component=kube-apiserver -o yaml | grep audit"
+            description: "Check API server audit configuration"
+            pass_criteria: "Audit logging is configured on API server"
+          - cmd: "kubectl logs -n kube-system -l component=kube-apiserver --tail=10 | head -5"
+            description: "Sample API server audit logs"
+            pass_criteria: "Audit events are being logged"
+
+  AU-3:
+    title: Content of Audit Records
+    description: |
+      Ensure audit records contain information that establishes:
+      what type of event occurred, when the event occurred, where the event occurred,
+      the source of the event, the outcome of the event, and identity of individuals/subjects.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail lookup-events --max-results 1 --query 'Events[0]'"
+            description: "Sample CloudTrail event to verify content"
+            pass_criteria: "Event contains eventType, eventTime, eventSource, sourceIPAddress, userIdentity"
+          - cmd: "aws logs filter-log-events --log-group-name LOG_GROUP --limit 1"
+            description: "Sample CloudWatch log event"
+            pass_criteria: "Log events contain required fields"
+      azure:
+        commands:
+          - cmd: "az monitor activity-log list --max-events 1 --query '[0]'"
+            description: "Sample Activity Log event to verify content"
+            pass_criteria: "Event contains category, operationName, status, caller, eventTimestamp"
+      gcp:
+        commands:
+          - cmd: "gcloud logging read 'logName:cloudaudit.googleapis.com' --limit=1 --format=json"
+            description: "Sample Cloud Audit log entry"
+            pass_criteria: "Entry contains protoPayload with required fields"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get events -A --sort-by='.lastTimestamp' -o json | jq '.items[0]'"
+            description: "Sample Kubernetes event"
+            pass_criteria: "Event contains type, reason, source, involvedObject, firstTimestamp"
+
+  AU-3(1):
+    title: Additional Audit Information
+    description: |
+      Generate audit records containing additional information: full text of commands,
+      session identifiers, and network protocol information.
+    baseline: [moderate, high]
+    parent: AU-3
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail get-event-selectors --trail-name TRAIL --query 'EventSelectors[].IncludeManagementEvents'"
+            description: "Verify management events include request parameters"
+            pass_criteria: "Management events are included with full details"
+          - cmd: "aws ssm describe-sessions --state Active"
+            description: "Check SSM session logging"
+            pass_criteria: "Session Manager logging is enabled"
+      azure:
+        commands:
+          - cmd: "az monitor diagnostic-settings show --resource RESOURCE_ID --name SETTING_NAME"
+            description: "Check detailed diagnostic settings"
+            pass_criteria: "Detailed logging categories are enabled"
+      gcp:
+        commands:
+          - cmd: "gcloud compute instances describe INSTANCE --format='value(metadata.items)' | grep serial-port"
+            description: "Check serial port logging configuration"
+            pass_criteria: "Serial port logging is enabled for detailed output"
+
+  AU-4:
+    title: Audit Log Storage Capacity
+    description: |
+      Allocate audit log storage capacity to accommodate audit logging requirements.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws s3api get-bucket-lifecycle-configuration --bucket CLOUDTRAIL_BUCKET"
+            description: "Check CloudTrail S3 bucket lifecycle rules"
+            pass_criteria: "Lifecycle rules manage storage appropriately"
+          - cmd: "aws logs describe-log-groups --query 'logGroups[*].{Name:logGroupName,StoredBytes:storedBytes,RetentionDays:retentionInDays}'"
+            description: "Check CloudWatch Logs storage"
+            pass_criteria: "Adequate storage allocated with appropriate retention"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== AU-4 Audit Log Storage Capacity ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== CloudWatch Log Groups Storage ==="
+          aws logs describe-log-groups --query 'logGroups[*].{Name:logGroupName,StoredBytes:storedBytes,RetentionDays:retentionInDays}' --output table
+          echo ""
+          echo "=== S3 Bucket Size (CloudTrail) ==="
+          BUCKET=$(aws cloudtrail describe-trails --query 'trailList[0].S3BucketName' --output text)
+          aws s3 ls s3://$BUCKET --recursive --summarize | tail -2
+      azure:
+        commands:
+          - cmd: "az monitor log-analytics workspace show --resource-group RG --workspace-name WS --query '{Sku:sku,RetentionDays:retentionInDays,DailyQuotaGb:workspaceCapping.dailyQuotaGb}'"
+            description: "Check Log Analytics workspace capacity settings"
+            pass_criteria: "Adequate capacity and retention configured"
+          - cmd: "az storage account show --name ACCOUNT --query '{Sku:sku,Tier:accessTier}'"
+            description: "Check storage account tier for log storage"
+            pass_criteria: "Appropriate storage tier for log retention"
+      gcp:
+        commands:
+          - cmd: "gcloud logging sinks describe SINK_NAME --format='value(destination)'"
+            description: "Check log sink destination configuration"
+            pass_criteria: "Log sink points to appropriate storage"
+          - cmd: "gsutil du -s gs://LOG_BUCKET/"
+            description: "Check log bucket storage usage"
+            pass_criteria: "Storage usage is within capacity"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get pv -l app=elasticsearch -o json | jq '.items[].spec.capacity.storage'"
+            description: "Check Elasticsearch PV capacity for logs"
+            pass_criteria: "Adequate storage provisioned"
+
+  AU-5:
+    title: Response to Audit Logging Process Failures
+    description: |
+      Alert personnel or roles upon audit logging process failures.
+      Take additional actions in the event of failure.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudwatch describe-alarms --alarm-name-prefix CloudTrail"
+            description: "Check for CloudTrail monitoring alarms"
+            pass_criteria: "Alarms exist for CloudTrail failures"
+          - cmd: "aws sns list-subscriptions-by-topic --topic-arn ALERT_TOPIC_ARN"
+            description: "Verify alert notifications are configured"
+            pass_criteria: "Subscriptions exist for alert delivery"
+          - cmd: "aws cloudtrail get-trail-status --name TRAIL --query '{IsLogging:IsLogging,LatestDeliveryError:LatestDeliveryError}'"
+            description: "Check trail delivery status"
+            pass_criteria: "IsLogging is true, no delivery errors"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== AU-5 Response to Audit Logging Failures ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== CloudTrail Status ==="
+          for trail in $(aws cloudtrail describe-trails --query 'trailList[].Name' --output text); do
+            echo "Trail: $trail"
+            aws cloudtrail get-trail-status --name "$trail" --query '{IsLogging:IsLogging,LatestDeliveryError:LatestDeliveryError,LatestNotificationError:LatestNotificationError}'
+          done
+          echo ""
+          echo "=== CloudTrail Alarms ==="
+          aws cloudwatch describe-alarms --alarm-name-prefix CloudTrail --query 'MetricAlarms[*].{Name:AlarmName,State:StateValue}' --output table
+      azure:
+        commands:
+          - cmd: "az monitor activity-log alert list"
+            description: "List activity log alerts"
+            pass_criteria: "Alerts configured for logging failures"
+          - cmd: "az monitor metrics alert list"
+            description: "List metric alerts for monitoring"
+            pass_criteria: "Metric alerts exist for log service health"
+      gcp:
+        commands:
+          - cmd: "gcloud alpha monitoring policies list --filter='displayName:log'"
+            description: "List alerting policies for logging"
+            pass_criteria: "Alerting policies exist for logging failures"
+          - cmd: "gcloud logging metrics list"
+            description: "List logging metrics for monitoring"
+            pass_criteria: "Metrics exist for audit log monitoring"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get prometheusrules -A | grep audit"
+            description: "Check Prometheus rules for audit alerting"
+            pass_criteria: "Alerting rules exist for audit failures"
+
+  AU-6:
+    title: Audit Record Review, Analysis, and Reporting
+    description: |
+      Review and analyze audit records for indications of inappropriate or unusual activity.
+      Report findings to designated personnel.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws securityhub get-findings --filters '{\"RecordState\":[{\"Value\":\"ACTIVE\",\"Comparison\":\"EQUALS\"}]}' --max-items 5"
+            description: "Check Security Hub for audit-related findings"
+            pass_criteria: "Security Hub is analyzing audit records"
+          - cmd: "aws guardduty list-detectors"
+            description: "Verify GuardDuty is enabled for threat detection"
+            pass_criteria: "GuardDuty detector is enabled"
+          - cmd: "aws guardduty list-findings --detector-id DETECTOR_ID --max-results 5"
+            description: "List recent GuardDuty findings"
+            pass_criteria: "Findings are being generated and reviewed"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== AU-6 Audit Review and Analysis ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== GuardDuty Status ==="
+          DETECTOR=$(aws guardduty list-detectors --query 'DetectorIds[0]' --output text)
+          if [ "$DETECTOR" != "None" ]; then
+            aws guardduty get-detector --detector-id $DETECTOR --query '{Status:Status,FindingPublishingFrequency:FindingPublishingFrequency}'
+            echo ""
+            echo "=== Recent Findings ==="
+            aws guardduty list-findings --detector-id $DETECTOR --max-results 10
+          else
+            echo "GuardDuty not enabled"
+          fi
+          echo ""
+          echo "=== Security Hub Findings ==="
+          aws securityhub get-findings --max-items 5 --query 'Findings[*].{Title:Title,Severity:Severity.Label}' --output table
+      azure:
+        commands:
+          - cmd: "az security alert list --query '[*].{Name:alertDisplayName,Severity:severity,Status:status}'"
+            description: "List security alerts from Azure Security Center"
+            pass_criteria: "Security alerts are being generated and triaged"
+          - cmd: "az sentinel alert-rule list --resource-group RG --workspace-name WS"
+            description: "List Sentinel alert rules"
+            pass_criteria: "Alert rules are configured for audit analysis"
+      gcp:
+        commands:
+          - cmd: "gcloud scc findings list ORGANIZATION_ID --source=SOURCES"
+            description: "List Security Command Center findings"
+            pass_criteria: "SCC is analyzing audit records"
+          - cmd: "gcloud logging read 'severity>=WARNING' --limit=10"
+            description: "Review recent warning/error logs"
+            pass_criteria: "Logs are being reviewed for anomalies"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get events -A --field-selector type=Warning --sort-by='.lastTimestamp'"
+            description: "Review warning events across cluster"
+            pass_criteria: "Warning events are being monitored"
+
+  AU-6(1):
+    title: Automated Process Integration
+    description: |
+      Integrate audit record review, analysis, and reporting using automated mechanisms.
+    baseline: [moderate, high]
+    parent: AU-6
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws securityhub describe-hub"
+            description: "Verify Security Hub is enabled for automated analysis"
+            pass_criteria: "Security Hub is enabled and configured"
+          - cmd: "aws detective list-graphs"
+            description: "Check if Detective is enabled for automated investigation"
+            pass_criteria: "Detective graphs exist for automated analysis"
+      azure:
+        commands:
+          - cmd: "az sentinel show --resource-group RG --workspace-name WS"
+            description: "Verify Sentinel is configured"
+            pass_criteria: "Sentinel workspace is active"
+      gcp:
+        commands:
+          - cmd: "gcloud scc settings describe --organization=ORG_ID"
+            description: "Check Security Command Center settings"
+            pass_criteria: "SCC Premium tier enabled for advanced analytics"
+
+  AU-7:
+    title: Audit Record Reduction and Report Generation
+    description: |
+      Provide and implement audit record reduction and report generation capability
+      that supports on-demand audit review, analysis, and reporting.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws logs describe-metric-filters --log-group-name LOG_GROUP"
+            description: "Check metric filters for log reduction"
+            pass_criteria: "Metric filters exist for key events"
+          - cmd: "aws athena list-named-queries"
+            description: "Check for Athena queries for log analysis"
+            pass_criteria: "Saved queries exist for audit analysis"
+          - cmd: "aws quicksight list-dashboards --aws-account-id ACCOUNT_ID"
+            description: "Check for QuickSight dashboards for reporting"
+            pass_criteria: "Audit dashboards are available"
+      azure:
+        commands:
+          - cmd: "az monitor log-analytics query --workspace WS_ID --analytics-query 'AuditLogs | summarize count() by Category'"
+            description: "Test log analytics query capability"
+            pass_criteria: "Queries can be executed for audit analysis"
+          - cmd: "az monitor log-analytics workspace saved-search list --resource-group RG --workspace-name WS"
+            description: "List saved searches for reporting"
+            pass_criteria: "Saved searches exist for common queries"
+      gcp:
+        commands:
+          - cmd: "bq ls --project_id PROJECT_ID"
+            description: "List BigQuery datasets for log analysis"
+            pass_criteria: "BigQuery datasets exist for log analysis"
+          - cmd: "gcloud logging views list --bucket=_Default --location=global"
+            description: "List logging views for filtered access"
+            pass_criteria: "Log views exist for scoped access"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get kibana -A"
+            description: "Check for Kibana dashboards"
+            pass_criteria: "Kibana is deployed for log visualization"
+
+  AU-8:
+    title: Time Stamps
+    description: |
+      Use internal system clocks to generate time stamps for audit records.
+      Record time stamps that can be mapped to UTC or GMT.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail lookup-events --max-results 1 --query 'Events[0].EventTime'"
+            description: "Verify CloudTrail timestamps are in UTC"
+            pass_criteria: "Timestamps are in ISO 8601 UTC format"
+          - cmd: "aws ec2 describe-instances --query 'Reservations[*].Instances[*].{Id:InstanceId,LaunchTime:LaunchTime}' --output table"
+            description: "Verify EC2 timestamps"
+            pass_criteria: "All timestamps are consistent and in UTC"
+      azure:
+        commands:
+          - cmd: "az monitor activity-log list --max-events 1 --query '[0].eventTimestamp'"
+            description: "Verify Activity Log timestamps"
+            pass_criteria: "Timestamps are in ISO 8601 UTC format"
+      gcp:
+        commands:
+          - cmd: "gcloud logging read --limit=1 --format='value(timestamp)'"
+            description: "Verify Cloud Logging timestamps"
+            pass_criteria: "Timestamps are in RFC 3339 UTC format"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get events --sort-by='.lastTimestamp' -o jsonpath='{.items[0].lastTimestamp}'"
+            description: "Check event timestamp format"
+            pass_criteria: "Timestamps are in UTC"
+
+  AU-8(1):
+    title: Synchronization with Authoritative Time Source
+    description: |
+      Compare the internal system clocks with an authoritative time source
+      and synchronize when the time difference exceeds a defined threshold.
+    baseline: [moderate, high]
+    parent: AU-8
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ec2 describe-instances --query 'Reservations[*].Instances[*].{Id:InstanceId,Platform:Platform}'"
+            description: "Identify instances to check NTP configuration"
+            pass_criteria: "All instances should use Amazon Time Sync Service"
+          - cmd: "aws ssm send-command --instance-ids INSTANCE_ID --document-name AWS-RunShellScript --parameters 'commands=[\"chronyc sources\"]'"
+            description: "Check NTP configuration on EC2 instance"
+            pass_criteria: "Instance is synced with Amazon Time Sync"
+      azure:
+        commands:
+          - cmd: "az vm run-command invoke --resource-group RG --name VM --command-id RunShellScript --scripts 'timedatectl status'"
+            description: "Check VM time synchronization"
+            pass_criteria: "NTP synchronized: yes"
+      gcp:
+        commands:
+          - cmd: "gcloud compute instances describe INSTANCE --format='value(metadata.items)'"
+            description: "Check instance metadata for NTP config"
+            pass_criteria: "Uses Google NTP servers"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get nodes -o jsonpath='{.items[*].status.conditions[?(@.type==\"Ready\")].lastHeartbeatTime}'"
+            description: "Check node heartbeat times for consistency"
+            pass_criteria: "Node times are synchronized"
+
+  AU-9:
+    title: Protection of Audit Information
+    description: |
+      Protect audit information and audit logging tools from unauthorized access,
+      modification, and deletion.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws s3api get-bucket-policy --bucket CLOUDTRAIL_BUCKET"
+            description: "Check CloudTrail S3 bucket policy"
+            pass_criteria: "Bucket policy restricts access appropriately"
+          - cmd: "aws s3api get-bucket-versioning --bucket CLOUDTRAIL_BUCKET"
+            description: "Check if versioning is enabled on CloudTrail bucket"
+            pass_criteria: "Versioning is Enabled"
+          - cmd: "aws s3api get-object-lock-configuration --bucket CLOUDTRAIL_BUCKET"
+            description: "Check for S3 Object Lock on CloudTrail bucket"
+            pass_criteria: "Object Lock is enabled for immutability"
+          - cmd: "aws cloudtrail describe-trails --query 'trailList[*].{Name:Name,LogFileValidation:LogFileValidationEnabled,KmsKeyId:KmsKeyId}'"
+            description: "Verify log file integrity validation and encryption"
+            pass_criteria: "LogFileValidation enabled, KMS encryption configured"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== AU-9 Protection of Audit Information ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== CloudTrail Configuration ==="
+          aws cloudtrail describe-trails --query 'trailList[*].{Name:Name,LogFileValidation:LogFileValidationEnabled,KmsKeyId:KmsKeyId,S3Bucket:S3BucketName}' --output table
+          echo ""
+          BUCKET=$(aws cloudtrail describe-trails --query 'trailList[0].S3BucketName' --output text)
+          echo "=== S3 Bucket Protection: $BUCKET ==="
+          echo "Versioning:"
+          aws s3api get-bucket-versioning --bucket $BUCKET
+          echo ""
+          echo "Public Access Block:"
+          aws s3api get-public-access-block --bucket $BUCKET
+          echo ""
+          echo "Bucket Policy:"
+          aws s3api get-bucket-policy --bucket $BUCKET --query 'Policy' --output text | jq .
+      azure:
+        commands:
+          - cmd: "az storage account show --name ACCOUNT --query '{AllowBlobPublicAccess:allowBlobPublicAccess,MinimumTlsVersion:minimumTlsVersion}'"
+            description: "Check storage account security settings"
+            pass_criteria: "Public access disabled, TLS 1.2+ required"
+          - cmd: "az role assignment list --scope /subscriptions/SUB_ID/resourceGroups/RG/providers/Microsoft.Storage/storageAccounts/ACCOUNT"
+            description: "Review storage account access assignments"
+            pass_criteria: "Access restricted to authorized roles"
+          - cmd: "az storage account blob-service-properties show --account-name ACCOUNT --query 'isVersioningEnabled'"
+            description: "Check blob versioning"
+            pass_criteria: "Versioning is enabled"
+      gcp:
+        commands:
+          - cmd: "gsutil iam get gs://LOG_BUCKET"
+            description: "Check IAM permissions on log bucket"
+            pass_criteria: "Access restricted to appropriate roles"
+          - cmd: "gsutil retention get gs://LOG_BUCKET"
+            description: "Check retention policy on log bucket"
+            pass_criteria: "Retention policy is set"
+          - cmd: "gsutil versioning get gs://LOG_BUCKET"
+            description: "Check versioning on log bucket"
+            pass_criteria: "Versioning is enabled"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get rolebindings,clusterrolebindings -A -o json | jq '.items[] | select(.roleRef.name | contains(\"audit\"))'"
+            description: "Check RBAC for audit-related roles"
+            pass_criteria: "Audit access is restricted"
+
+  AU-9(2):
+    title: Store on Separate Physical Systems
+    description: |
+      Store audit records on separate physical systems or system components
+      from the system being audited.
+    baseline: [moderate, high]
+    parent: AU-9
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail describe-trails --query 'trailList[*].{Name:Name,S3Bucket:S3BucketName,IsOrganizationTrail:IsOrganizationTrail}'"
+            description: "Verify CloudTrail logs to separate bucket"
+            pass_criteria: "Logs are stored in dedicated bucket, ideally in separate account"
+          - cmd: "aws logs describe-log-groups --query 'logGroups[*].{Name:logGroupName,KmsKeyId:kmsKeyId}'"
+            description: "Check CloudWatch Logs cross-account configuration"
+            pass_criteria: "Logs can be exported to separate account"
+      azure:
+        commands:
+          - cmd: "az monitor diagnostic-settings list --resource RESOURCE_ID --query '[].{StorageAccount:storageAccountId,Workspace:workspaceId}'"
+            description: "Check diagnostic settings destinations"
+            pass_criteria: "Logs sent to separate storage account or workspace"
+      gcp:
+        commands:
+          - cmd: "gcloud logging sinks list --format='table(name,destination)'"
+            description: "List log sinks and destinations"
+            pass_criteria: "Logs exported to separate project or bucket"
+
+  AU-9(4):
+    title: Access by Subset of Privileged Users
+    description: |
+      Authorize access to management of audit logging functionality to only
+      a subset of privileged users or roles.
+    baseline: [moderate, high]
+    parent: AU-9
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-users-in-group --group-name CloudTrailAdmins"
+            description: "List users with CloudTrail admin access"
+            pass_criteria: "Limited number of users with CloudTrail admin"
+          - cmd: "aws iam list-attached-group-policies --group-name CloudTrailAdmins"
+            description: "Check policies attached to CloudTrail admin group"
+            pass_criteria: "Appropriate policies attached"
+      azure:
+        commands:
+          - cmd: "az role assignment list --role 'Log Analytics Contributor' --query '[].{Principal:principalName}'"
+            description: "List Log Analytics contributors"
+            pass_criteria: "Limited number of contributors"
+      gcp:
+        commands:
+          - cmd: "gcloud projects get-iam-policy PROJECT --filter='bindings.role:logging.admin'"
+            description: "List logging admins"
+            pass_criteria: "Limited number of logging admins"
+
+  AU-10:
+    title: Non-repudiation
+    description: |
+      Provide irrefutable evidence that an individual (or process acting on behalf of an individual)
+      performed specific actions.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail describe-trails --query 'trailList[*].{Name:Name,LogFileValidation:LogFileValidationEnabled}'"
+            description: "Check log file integrity validation"
+            pass_criteria: "LogFileValidationEnabled is true"
+          - cmd: "aws cloudtrail validate-logs --trail-arn TRAIL_ARN --start-time START --end-time END"
+            description: "Validate log file integrity"
+            pass_criteria: "Log files are valid and unmodified"
+          - cmd: "aws kms describe-key --key-id KEY_ID --query 'KeyMetadata.{KeyState:KeyState,KeySpec:KeySpec}'"
+            description: "Verify KMS key used for signing"
+            pass_criteria: "Key is enabled and appropriate spec"
+      azure:
+        commands:
+          - cmd: "az storage blob immutability-policy show --account-name ACCOUNT --container-name logs --blob-name BLOB"
+            description: "Check immutability policy"
+            pass_criteria: "Immutability policy prevents modification"
+      gcp:
+        commands:
+          - cmd: "gsutil ls -L gs://LOG_BUCKET/object | grep Hash"
+            description: "Check object hash for integrity"
+            pass_criteria: "Hash values are recorded"
+
+  AU-11:
+    title: Audit Record Retention
+    description: |
+      Retain audit records for a time period consistent with the records retention policy
+      to provide support for after-the-fact investigations.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws logs describe-log-groups --query 'logGroups[*].{Name:logGroupName,RetentionDays:retentionInDays}'"
+            description: "Check CloudWatch Logs retention settings"
+            pass_criteria: "Retention meets policy requirements (typically 1-7 years)"
+          - cmd: "aws s3api get-bucket-lifecycle-configuration --bucket CLOUDTRAIL_BUCKET"
+            description: "Check S3 lifecycle rules for CloudTrail"
+            pass_criteria: "Lifecycle rules retain logs for required period"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== AU-11 Audit Record Retention ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== CloudWatch Log Retention ==="
+          aws logs describe-log-groups --query 'logGroups[*].{Name:logGroupName,RetentionDays:retentionInDays}' --output table
+          echo ""
+          echo "=== S3 Lifecycle Configuration ==="
+          BUCKET=$(aws cloudtrail describe-trails --query 'trailList[0].S3BucketName' --output text)
+          aws s3api get-bucket-lifecycle-configuration --bucket $BUCKET 2>/dev/null || echo "No lifecycle configuration"
+      azure:
+        commands:
+          - cmd: "az monitor log-analytics workspace show --resource-group RG --workspace-name WS --query 'retentionInDays'"
+            description: "Check Log Analytics retention"
+            pass_criteria: "Retention meets policy requirements"
+          - cmd: "az storage management-policy show --account-name ACCOUNT"
+            description: "Check storage lifecycle management policy"
+            pass_criteria: "Lifecycle rules retain logs appropriately"
+      gcp:
+        commands:
+          - cmd: "gcloud logging buckets describe _Default --location=global --format='value(retentionDays)'"
+            description: "Check default log bucket retention"
+            pass_criteria: "Retention meets policy requirements"
+          - cmd: "gsutil lifecycle get gs://LOG_BUCKET"
+            description: "Check GCS lifecycle rules"
+            pass_criteria: "Lifecycle rules retain logs appropriately"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get elasticsearch -A -o jsonpath='{.items[*].spec.nodeSets[*].config}'| jq '.\"index.lifecycle\"'"
+            description: "Check Elasticsearch index lifecycle"
+            pass_criteria: "Index lifecycle retains logs appropriately"
+
+  AU-12:
+    title: Audit Record Generation
+    description: |
+      Provide audit record generation capability for the events identified in AU-2
+      at all system components.
+      Allow personnel to select which events are to be logged.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail describe-trails --query 'trailList[*].{Name:Name,IsMultiRegion:IsMultiRegionTrail,IsOrg:IsOrganizationTrail}'"
+            description: "Verify multi-region, organization-wide trail"
+            pass_criteria: "Multi-region and organization trail enabled"
+          - cmd: "aws configservice describe-configuration-recorder-status"
+            description: "Check AWS Config recorder status"
+            pass_criteria: "Recording is true"
+          - cmd: "aws vpc describe-flow-logs"
+            description: "Check VPC Flow Logs configuration"
+            pass_criteria: "Flow logs enabled for VPCs"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== AU-12 Audit Record Generation ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== CloudTrail Configuration ==="
+          aws cloudtrail describe-trails --output table
+          echo ""
+          echo "=== AWS Config Status ==="
+          aws configservice describe-configuration-recorder-status --output table
+          echo ""
+          echo "=== VPC Flow Logs ==="
+          aws ec2 describe-flow-logs --query 'FlowLogs[*].{VPC:ResourceId,Status:FlowLogStatus,Destination:LogDestination}' --output table
+      azure:
+        commands:
+          - cmd: "az monitor diagnostic-settings list --resource RESOURCE_ID"
+            description: "Check diagnostic settings on resources"
+            pass_criteria: "Diagnostic settings configured"
+          - cmd: "az network watcher flow-log list --location LOCATION"
+            description: "Check NSG flow logs"
+            pass_criteria: "Flow logs enabled for NSGs"
+      gcp:
+        commands:
+          - cmd: "gcloud compute networks subnets describe SUBNET --region=REGION --format='value(enableFlowLogs)'"
+            description: "Check VPC Flow Logs"
+            pass_criteria: "Flow logs enabled"
+          - cmd: "gcloud projects get-iam-policy PROJECT --format=json | jq '.auditConfigs'"
+            description: "Check audit configuration"
+            pass_criteria: "Audit configs set for required services"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get pods -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].spec.containers[0].command}' | tr ',' '\n' | grep audit"
+            description: "Check API server audit configuration"
+            pass_criteria: "Audit policy and log path configured"
+
+  AU-12(1):
+    title: System-Wide and Time-Correlated Audit Trail
+    description: |
+      Compile audit records into a system-wide, time-correlated audit trail.
+    baseline: [moderate, high]
+    parent: AU-12
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail describe-trails --query 'trailList[?IsOrganizationTrail==`true`]'"
+            description: "Check for organization trail"
+            pass_criteria: "Organization trail exists"
+          - cmd: "aws securityhub describe-hub"
+            description: "Check Security Hub for centralized findings"
+            pass_criteria: "Security Hub aggregates findings"
+      azure:
+        commands:
+          - cmd: "az sentinel show --resource-group RG --workspace-name WS"
+            description: "Check Sentinel for centralized SIEM"
+            pass_criteria: "Sentinel workspace configured"
+      gcp:
+        commands:
+          - cmd: "gcloud logging sinks list --organization=ORG_ID"
+            description: "Check organization-level log sinks"
+            pass_criteria: "Organization sink exports to central location"
+
+  AU-12(3):
+    title: Changes by Authorized Individuals
+    description: |
+      Provide and implement the capability for authorized individuals to change
+      the logging to be performed based on selectable event criteria.
+    baseline: [high]
+    parent: AU-12
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail put-event-selectors --trail-name TRAIL --event-selectors file://selectors.json --dry-run"
+            description: "Test ability to modify event selectors"
+            pass_criteria: "Authorized users can modify selectors"
+          - cmd: "aws iam simulate-principal-policy --policy-source-arn USER_ARN --action-names cloudtrail:PutEventSelectors"
+            description: "Check who can modify CloudTrail selectors"
+            pass_criteria: "Only authorized users have permission"
+      azure:
+        commands:
+          - cmd: "az role assignment list --role 'Monitoring Contributor'"
+            description: "List monitoring contributors"
+            pass_criteria: "Limited authorized users"
+      gcp:
+        commands:
+          - cmd: "gcloud projects get-iam-policy PROJECT --filter='bindings.role:logging.configWriter'"
+            description: "List logging config writers"
+            pass_criteria: "Limited authorized users"
+
+  AU-13:
+    title: Monitoring for Information Disclosure
+    description: |
+      Monitor for evidence of unauthorized disclosure of organizational information.
+    baseline: [high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws macie2 describe-buckets"
+            description: "Check Macie for data discovery"
+            pass_criteria: "Macie is monitoring S3 buckets"
+          - cmd: "aws guardduty list-findings --detector-id DETECTOR --finding-criteria '{\"Criterion\":{\"type\":{\"Eq\":[\"UnauthorizedAccess:S3/MaliciousIPCaller\"]}}}'"
+            description: "Check for data exfiltration findings"
+            pass_criteria: "Monitoring for data disclosure"
+      azure:
+        commands:
+          - cmd: "az security atp storage show --resource-group RG --storage-account ACCOUNT"
+            description: "Check Advanced Threat Protection for Storage"
+            pass_criteria: "ATP enabled for storage"
+      gcp:
+        commands:
+          - cmd: "gcloud dlp jobs list"
+            description: "List DLP jobs for data monitoring"
+            pass_criteria: "DLP jobs are configured"
+
+  AU-14:
+    title: Session Audit
+    description: |
+      Provide and implement the capability for authorized users to select user session to capture
+      and the content to be recorded.
+    baseline: [high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm describe-sessions --state History --max-results 5"
+            description: "Check SSM Session Manager history"
+            pass_criteria: "Session history is available"
+          - cmd: "aws ssm describe-document --name SSM-SessionManagerRunShell --query 'Document.{Name:Name,Status:Status}'"
+            description: "Check Session Manager document"
+            pass_criteria: "Session logging is configured"
+      azure:
+        commands:
+          - cmd: "az vm run-command list --resource-group RG --vm-name VM"
+            description: "List VM run command history"
+            pass_criteria: "Command history is available"
+      gcp:
+        commands:
+          - cmd: "gcloud compute instances describe INSTANCE --format='value(metadata.items)' | grep enable-oslogin"
+            description: "Check OS Login configuration"
+            pass_criteria: "OS Login enabled for session auditing"
+
+  AU-16:
+    title: Cross-Organizational Audit Logging
+    description: |
+      Employ methods for coordinating audit information among external organizations
+      when audit information is transmitted across organizational boundaries.
+    baseline: [high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail describe-trails --query 'trailList[?IsOrganizationTrail==`true`]'"
+            description: "Check organization trail for cross-account"
+            pass_criteria: "Organization trail covers all accounts"
+          - cmd: "aws organizations list-aws-service-access-for-organization --query 'EnabledServicePrincipals[?ServicePrincipal==`cloudtrail.amazonaws.com`]'"
+            description: "Check CloudTrail organization integration"
+            pass_criteria: "CloudTrail integrated with Organizations"
+      azure:
+        commands:
+          - cmd: "az monitor log-analytics workspace list --query '[].{Name:name,Tier:sku.name}'"
+            description: "List Log Analytics workspaces across subscriptions"
+            pass_criteria: "Central workspace for cross-org logging"
+      gcp:
+        commands:
+          - cmd: "gcloud logging sinks list --organization=ORG_ID"
+            description: "List organization-wide log sinks"
+            pass_criteria: "Organization sink for cross-project logging"

@@ -1,0 +1,230 @@
+name: NIST 800-53 PS - Personnel Security
+family: PS
+description: Controls for personnel screening, access agreements, and termination
+version: Rev 5
+
+controls:
+  PS-1:
+    title: Policy and Procedures
+    description: |
+      Develop, document, and disseminate personnel security policy and procedures.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-users"
+            description: "List users subject to personnel security"
+            pass_criteria: "User management supports personnel security"
+
+  PS-2:
+    title: Position Risk Designation
+    description: |
+      Assign a risk designation to all organizational positions.
+      Establish screening criteria for individuals filling those positions.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-groups"
+            description: "List IAM groups (position categories)"
+            pass_criteria: "Groups reflect position designations"
+          - cmd: "aws iam list-policies --scope Local --query 'Policies[*].PolicyName'"
+            description: "List custom policies"
+            pass_criteria: "Policies align with position risk"
+      azure:
+        commands:
+          - cmd: "az ad group list"
+            description: "List AD groups"
+            pass_criteria: "Groups reflect position designations"
+      gcp:
+        commands:
+          - cmd: "gcloud iam roles list --project=PROJECT"
+            description: "List custom roles"
+            pass_criteria: "Roles reflect position designations"
+
+  PS-3:
+    title: Personnel Screening
+    description: |
+      Screen individuals prior to authorizing access to the system.
+      Rescreen individuals in accordance with defined conditions.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-users --query 'Users[*].{UserName:UserName,CreateDate:CreateDate}'"
+            description: "List users with creation dates"
+            pass_criteria: "New users should have screening verified"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PS-3 Personnel Screening ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Users Created in Last 90 Days ==="
+          cutoff=$(date -d "-90 days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -v-90d +%Y-%m-%dT%H:%M:%SZ)
+          aws iam list-users --query "Users[?CreateDate>=\`$cutoff\`].{UserName:UserName,CreateDate:CreateDate}" --output table
+          echo ""
+          echo "NOTE: Verify background screening was completed before granting access"
+          echo "Required checks typically include:"
+          echo "- Criminal background check"
+          echo "- Reference verification"
+          echo "- Citizenship/work authorization (for applicable positions)"
+      azure:
+        commands:
+          - cmd: "az ad user list --query '[].{Name:displayName,Created:createdDateTime}'"
+            description: "List users with creation dates"
+            pass_criteria: "New users should have screening verified"
+
+  PS-4:
+    title: Personnel Termination
+    description: |
+      Upon termination of individual employment, disable system access within defined time period.
+      Terminate/revoke authenticators and credentials. Conduct exit interviews.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-users --query 'Users[?PasswordLastUsed==null].UserName'"
+            description: "Find users who have never logged in"
+            pass_criteria: "Review for potential terminated accounts"
+          - cmd: "aws iam generate-credential-report"
+            description: "Generate credential report"
+            pass_criteria: "Review for inactive accounts"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PS-4 Personnel Termination ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Users with No Recent Activity ==="
+          aws iam generate-credential-report >/dev/null 2>&1
+          sleep 5
+          aws iam get-credential-report --query 'Content' --output text | base64 -d | awk -F',' 'NR>1 && $5!="" {print $1,$5}' | head -20
+          echo ""
+          echo "=== Users Never Logged In ==="
+          aws iam list-users --query 'Users[?PasswordLastUsed==null].UserName' --output table
+          echo ""
+          echo "NOTE: Terminated users should have:"
+          echo "- Console access disabled"
+          echo "- Access keys deleted"
+          echo "- MFA devices deactivated"
+          echo "- Group memberships removed"
+      azure:
+        commands:
+          - cmd: "az ad user list --query '[?accountEnabled==false].displayName'"
+            description: "List disabled users"
+            pass_criteria: "Terminated users are disabled"
+      gcp:
+        commands:
+          - cmd: "gcloud iam service-accounts list --filter='disabled:true'"
+            description: "List disabled service accounts"
+            pass_criteria: "Terminated accounts are disabled"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get serviceaccounts -A --sort-by='.metadata.creationTimestamp'"
+            description: "List service accounts by age"
+            pass_criteria: "Review for stale accounts"
+
+  PS-5:
+    title: Personnel Transfer
+    description: |
+      Review and confirm ongoing operational need for current access authorizations
+      when individuals are reassigned or transferred.
+      Initiate transfer or reassignment actions within defined time period.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-groups-for-user --user-name USERNAME"
+            description: "Check user group memberships"
+            pass_criteria: "Memberships align with current role"
+          - cmd: "aws iam list-attached-user-policies --user-name USERNAME"
+            description: "Check user policies"
+            pass_criteria: "Policies align with current role"
+      azure:
+        commands:
+          - cmd: "az role assignment list --assignee USER_ID"
+            description: "Check user role assignments"
+            pass_criteria: "Roles align with current position"
+      gcp:
+        commands:
+          - cmd: "gcloud projects get-iam-policy PROJECT --filter='bindings.members:USER'"
+            description: "Check user IAM bindings"
+            pass_criteria: "Bindings align with current role"
+
+  PS-6:
+    title: Access Agreements
+    description: |
+      Develop and document access agreements for the system.
+      Review and update access agreements periodically.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-user-tags --user-name USERNAME"
+            description: "Check for access agreement tags"
+            pass_criteria: "Users tagged with agreement acknowledgment"
+      azure:
+        commands:
+          - cmd: "az ad terms-of-use list"
+            description: "List Terms of Use"
+            pass_criteria: "Terms of Use are defined"
+
+  PS-7:
+    title: External Personnel Security
+    description: |
+      Establish personnel security requirements for external providers.
+      Document personnel security requirements. Monitor external provider compliance.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-roles --query 'Roles[?AssumeRolePolicyDocument.Statement[?Principal.Federated!=null]]'"
+            description: "List federated roles for external access"
+            pass_criteria: "External access is documented"
+          - cmd: "aws organizations list-accounts --query 'Accounts[?Status==`ACTIVE`]'"
+            description: "List organization accounts"
+            pass_criteria: "External accounts are monitored"
+      azure:
+        commands:
+          - cmd: "az ad sp list --filter=\"servicePrincipalType eq 'Application'\""
+            description: "List external applications"
+            pass_criteria: "External applications are documented"
+      gcp:
+        commands:
+          - cmd: "gcloud iam workload-identity-pools list --location=global"
+            description: "List workload identity pools"
+            pass_criteria: "External identities are documented"
+
+  PS-8:
+    title: Personnel Sanctions
+    description: |
+      Employ a formal sanctions process for individuals failing to comply with
+      security and privacy policies and procedures.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,AttributeValue=DeleteAccessKey --max-results 5"
+            description: "Check for access revocation events"
+            pass_criteria: "Sanctions result in access changes"
+      azure:
+        commands:
+          - cmd: "az monitor activity-log list --query '[?authorization.action contains `delete`]' --max-events 10"
+            description: "Check for access removal events"
+            pass_criteria: "Sanctions result in access changes"
+
+  PS-9:
+    title: Position Descriptions
+    description: |
+      Incorporate security and privacy role responsibilities in organizational position descriptions.
+    baseline: [high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-roles --query 'Roles[*].{Name:RoleName,Description:Description}'"
+            description: "List roles with descriptions"
+            pass_criteria: "Roles have security descriptions"
+      azure:
+        commands:
+          - cmd: "az ad sp list --query '[].{Name:displayName,Description:description}'"
+            description: "List service principals with descriptions"
+            pass_criteria: "Principals have descriptions"

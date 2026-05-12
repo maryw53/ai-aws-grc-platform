@@ -1,0 +1,219 @@
+name: NIST 800-53 MA - Maintenance
+family: MA
+description: Controls for system maintenance and remote maintenance
+version: Rev 5
+
+controls:
+  MA-1:
+    title: Policy and Procedures
+    description: |
+      Develop, document, and disseminate maintenance policy and procedures.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm describe-maintenance-windows"
+            description: "Check SSM maintenance windows"
+            pass_criteria: "Maintenance windows are defined"
+
+  MA-2:
+    title: Controlled Maintenance
+    description: |
+      Schedule, document, and review records of maintenance, repair, and replacement.
+      Approve and monitor all maintenance activities.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm describe-maintenance-windows"
+            description: "List maintenance windows"
+            pass_criteria: "Maintenance is scheduled"
+          - cmd: "aws ssm describe-maintenance-window-executions --window-id WINDOW_ID"
+            description: "Check maintenance history"
+            pass_criteria: "Maintenance is documented"
+          - cmd: "aws rds describe-pending-maintenance-actions"
+            description: "Check pending RDS maintenance"
+            pass_criteria: "Database maintenance is tracked"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== MA-2 Controlled Maintenance ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== SSM Maintenance Windows ==="
+          aws ssm describe-maintenance-windows --query 'WindowIdentities[*].{Name:Name,Id:WindowId,Enabled:Enabled}' --output table
+          echo ""
+          echo "=== Pending RDS Maintenance ==="
+          aws rds describe-pending-maintenance-actions --query 'PendingMaintenanceActions[*].{Resource:ResourceIdentifier,Action:PendingMaintenanceActionDetails[0].Action}' --output table
+          echo ""
+          echo "=== Recent Maintenance Events ==="
+          aws health describe-events --filter 'eventTypeCategories=scheduledChange' --query 'events[*].{Service:service,Event:eventTypeCode,Status:statusCode}' --output table 2>/dev/null || echo "AWS Health not available"
+      azure:
+        commands:
+          - cmd: "az maintenance configuration list"
+            description: "List maintenance configurations"
+            pass_criteria: "Maintenance is configured"
+          - cmd: "az vm maintenance list"
+            description: "List VM maintenance"
+            pass_criteria: "VM maintenance is scheduled"
+      gcp:
+        commands:
+          - cmd: "gcloud sql instances describe INSTANCE --format='value(settings.maintenanceWindow)'"
+            description: "Check SQL maintenance window"
+            pass_criteria: "Maintenance window is set"
+          - cmd: "gcloud compute instances describe INSTANCE --format='value(scheduling.maintenanceFrequency)'"
+            description: "Check instance maintenance"
+            pass_criteria: "Maintenance is configured"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get nodes -o json | jq '.items[] | {name:.metadata.name,schedulingDisabled:.spec.unschedulable}'"
+            description: "Check node maintenance status"
+            pass_criteria: "Node maintenance is controlled"
+
+  MA-3:
+    title: Maintenance Tools
+    description: |
+      Approve, control, and monitor the use of system maintenance tools.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm list-documents --document-filter-list 'key=DocumentType,value=Command'"
+            description: "List SSM command documents"
+            pass_criteria: "Maintenance tools are documented"
+          - cmd: "aws ssm describe-instance-information"
+            description: "List SSM managed instances"
+            pass_criteria: "SSM manages maintenance access"
+      azure:
+        commands:
+          - cmd: "az vm run-command list --location LOCATION"
+            description: "List available run commands"
+            pass_criteria: "Run commands are controlled"
+      gcp:
+        commands:
+          - cmd: "gcloud compute instances describe INSTANCE --format='value(guestAttributes)'"
+            description: "Check guest attributes"
+            pass_criteria: "Maintenance tools are tracked"
+
+  MA-3(1):
+    title: Inspect Tools
+    description: |
+      Inspect maintenance tools to ensure they are working properly and have not been modified.
+    baseline: [moderate, high]
+    parent: MA-3
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm get-document --name AWS-RunShellScript --document-version $LATEST"
+            description: "Check SSM document integrity"
+            pass_criteria: "SSM documents are unmodified"
+
+  MA-4:
+    title: Nonlocal Maintenance
+    description: |
+      Authorize, monitor, and control nonlocal maintenance and diagnostic activities.
+      Use authenticators for nonlocal maintenance that meet organization requirements.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm describe-sessions --state History --max-results 20"
+            description: "Check SSM session history"
+            pass_criteria: "Remote sessions are logged"
+          - cmd: "aws ssm describe-instance-information --query 'InstanceInformationList[*].{Id:InstanceId,PingStatus:PingStatus}'"
+            description: "Check SSM connectivity"
+            pass_criteria: "Remote maintenance via SSM"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== MA-4 Nonlocal Maintenance ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== SSM Session History ==="
+          aws ssm describe-sessions --state History --max-results 20 --query 'Sessions[*].{SessionId:SessionId,Target:Target,StartDate:StartDate,EndDate:EndDate}' --output table
+          echo ""
+          echo "=== SSM Managed Instances ==="
+          aws ssm describe-instance-information --query 'InstanceInformationList[*].{Id:InstanceId,Platform:PlatformType,PingStatus:PingStatus}' --output table
+      azure:
+        commands:
+          - cmd: "az vm run-command list --location LOCATION"
+            description: "Check run command access"
+            pass_criteria: "Remote commands are controlled"
+          - cmd: "az bastion list"
+            description: "List Bastion hosts"
+            pass_criteria: "Bastion provides secure remote access"
+      gcp:
+        commands:
+          - cmd: "gcloud compute os-login describe-profile"
+            description: "Check OS Login configuration"
+            pass_criteria: "OS Login controls remote access"
+      kubernetes:
+        commands:
+          - cmd: "kubectl auth can-i --list"
+            description: "Check maintenance permissions"
+            pass_criteria: "Maintenance access is controlled"
+
+  MA-4(1):
+    title: Logging and Review
+    description: |
+      Log nonlocal maintenance and diagnostic sessions. Review the audit records of sessions.
+    baseline: [moderate, high]
+    parent: MA-4
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm describe-sessions --state History"
+            description: "Review session history"
+            pass_criteria: "Sessions are logged and reviewed"
+          - cmd: "aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,AttributeValue=StartSession"
+            description: "Check CloudTrail for sessions"
+            pass_criteria: "Sessions are in CloudTrail"
+      azure:
+        commands:
+          - cmd: "az monitor activity-log list --query '[?contains(operationName.value,`run`)]'"
+            description: "Check run command logs"
+            pass_criteria: "Commands are logged"
+
+  MA-5:
+    title: Maintenance Personnel
+    description: |
+      Establish a process for maintenance personnel authorization.
+      Maintain a list of authorized maintenance organizations or personnel.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-groups-for-user --user-name USERNAME"
+            description: "Check user group membership"
+            pass_criteria: "Maintenance personnel are authorized"
+          - cmd: "aws iam list-users-in-group --group-name MaintenanceTeam"
+            description: "List maintenance team members"
+            pass_criteria: "Maintenance list is maintained"
+      azure:
+        commands:
+          - cmd: "az ad group member list --group 'Maintenance Team'"
+            description: "List maintenance group members"
+            pass_criteria: "Maintenance personnel documented"
+      gcp:
+        commands:
+          - cmd: "gcloud projects get-iam-policy PROJECT --filter='bindings.role:compute.admin'"
+            description: "List compute admins"
+            pass_criteria: "Maintenance personnel documented"
+
+  MA-6:
+    title: Timely Maintenance
+    description: |
+      Obtain maintenance support and/or spare parts for key system components within defined time period.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws support describe-cases --include-resolved-cases"
+            description: "Check AWS Support cases"
+            pass_criteria: "Support is available"
+          - cmd: "aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,MultiAZ:MultiAZ}'"
+            description: "Check Multi-AZ for availability"
+            pass_criteria: "Redundancy reduces maintenance urgency"
+      azure:
+        commands:
+          - cmd: "az support tickets list"
+            description: "List support tickets"
+            pass_criteria: "Support is available"

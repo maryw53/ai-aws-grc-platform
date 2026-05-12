@@ -1,0 +1,262 @@
+name: NIST 800-53 PM - Program Management
+family: PM
+description: Controls for information security and privacy programs at the organization level
+version: Rev 5
+
+controls:
+  PM-1:
+    title: Information Security Program Plan
+    description: |
+      Develop and disseminate an organization-wide information security program plan.
+      Review and update the plan periodically.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws organizations describe-organization"
+            description: "Verify organization structure"
+            pass_criteria: "Organization supports security program"
+          - cmd: "aws securityhub describe-hub"
+            description: "Check Security Hub"
+            pass_criteria: "Security Hub supports program"
+
+  PM-2:
+    title: Information Security Program Leadership Role
+    description: |
+      Appoint a senior agency information security officer with the authority to ensure compliance.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-groups --query 'Groups[?contains(GroupName,`Security`)]'"
+            description: "Check for security groups"
+            pass_criteria: "Security leadership groups exist"
+      azure:
+        commands:
+          - cmd: "az ad group list --query '[?contains(displayName,`Security`)]'"
+            description: "Check for security groups"
+            pass_criteria: "Security leadership exists"
+
+  PM-3:
+    title: Information Security and Privacy Resources
+    description: |
+      Ensure the resources needed to implement the information security and privacy programs
+      are included in capital planning and requests.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws budgets describe-budgets --account-id ACCOUNT_ID"
+            description: "Check security budgets"
+            pass_criteria: "Security budget exists"
+          - cmd: "aws ce get-cost-and-usage-with-resources --time-period Start=START,End=END --filter '{\"Tags\":{\"Key\":\"Department\",\"Values\":[\"Security\"]}}' --granularity MONTHLY --metrics BlendedCost"
+            description: "Check security spending"
+            pass_criteria: "Security resources funded"
+      azure:
+        commands:
+          - cmd: "az consumption budget list"
+            description: "Check budgets"
+            pass_criteria: "Security budget exists"
+
+  PM-4:
+    title: Plan of Action and Milestones Process
+    description: |
+      Implement a process to ensure that plans of action and milestones are developed and maintained.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm list-ops-items"
+            description: "Check OpsItems for POA&M tracking"
+            pass_criteria: "OpsItems track remediation"
+          - cmd: "aws securityhub get-findings --filters '{\"WorkflowStatus\":[{\"Value\":\"NEW\",\"Comparison\":\"EQUALS\"}]}'"
+            description: "Check for new findings"
+            pass_criteria: "Findings tracked for remediation"
+      azure:
+        commands:
+          - cmd: "az security task list"
+            description: "List security tasks"
+            pass_criteria: "Tasks track POA&M"
+
+  PM-5:
+    title: System Inventory
+    description: |
+      Develop and update an inventory of organizational systems.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws organizations list-accounts"
+            description: "List organization accounts"
+            pass_criteria: "Accounts are inventoried"
+          - cmd: "aws resourcegroupstaggingapi get-resources"
+            description: "List all tagged resources"
+            pass_criteria: "Resources are inventoried"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== PM-5 System Inventory ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== AWS Accounts ==="
+          aws organizations list-accounts --query 'Accounts[*].{Id:Id,Name:Name,Email:Email,Status:Status}' --output table 2>/dev/null || echo "Not organization master"
+          echo ""
+          echo "=== Resource Summary by Type ==="
+          aws resourcegroupstaggingapi get-resources --query 'ResourceTagMappingList[*].ResourceARN' --output text | cut -d: -f6 | sort | uniq -c | sort -rn | head -20
+      azure:
+        commands:
+          - cmd: "az account list"
+            description: "List subscriptions"
+            pass_criteria: "Subscriptions inventoried"
+          - cmd: "az resource list --output table | head -50"
+            description: "List resources"
+            pass_criteria: "Resources inventoried"
+      gcp:
+        commands:
+          - cmd: "gcloud projects list"
+            description: "List projects"
+            pass_criteria: "Projects inventoried"
+
+  PM-6:
+    title: Measures of Performance
+    description: |
+      Develop, monitor, and report on the results of information security and privacy measures.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws securityhub get-findings-statistics"
+            description: "Get finding statistics"
+            pass_criteria: "Security metrics available"
+          - cmd: "aws cloudwatch get-metric-statistics --namespace AWS/SecurityHub --metric-name SecurityScore --period 86400 --statistics Average --start-time START --end-time END"
+            description: "Check security score"
+            pass_criteria: "Security score is tracked"
+      azure:
+        commands:
+          - cmd: "az security secure-score show"
+            description: "Check secure score"
+            pass_criteria: "Secure score is tracked"
+      gcp:
+        commands:
+          - cmd: "gcloud scc findings list ORG_ID --query='length(@)'"
+            description: "Count SCC findings"
+            pass_criteria: "Finding metrics available"
+
+  PM-7:
+    title: Enterprise Architecture
+    description: |
+      Develop and maintain an enterprise architecture with consideration for information security,
+      privacy, and the resulting risk to organizational operations.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws organizations describe-organization"
+            description: "Check organization structure"
+            pass_criteria: "Enterprise architecture documented"
+          - cmd: "aws ec2 describe-transit-gateways"
+            description: "Check network architecture"
+            pass_criteria: "Network architecture documented"
+      azure:
+        commands:
+          - cmd: "az account management-group list"
+            description: "Check management group hierarchy"
+            pass_criteria: "Enterprise architecture documented"
+
+  PM-9:
+    title: Risk Management Strategy
+    description: |
+      Develop a comprehensive strategy to manage security and privacy risk to operations.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws securityhub describe-hub"
+            description: "Check Security Hub"
+            pass_criteria: "Risk management via Security Hub"
+          - cmd: "aws guardduty list-detectors"
+            description: "Check GuardDuty"
+            pass_criteria: "Threat detection supports risk management"
+
+  PM-10:
+    title: Authorization Process
+    description: |
+      Manage the security and privacy state of organizational systems through authorization processes.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws organizations list-policies --filter SERVICE_CONTROL_POLICY"
+            description: "List SCPs governing authorization"
+            pass_criteria: "Authorization policies exist"
+          - cmd: "aws auditmanager list-assessments"
+            description: "Check Audit Manager"
+            pass_criteria: "Assessments support authorization"
+      azure:
+        commands:
+          - cmd: "az policy assignment list"
+            description: "List policy assignments"
+            pass_criteria: "Policies support authorization"
+
+  PM-11:
+    title: Mission and Business Process Definition
+    description: |
+      Define organizational mission and business processes with consideration for information security
+      and privacy.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws resourcegroupstaggingapi get-resources --tag-filters Key=BusinessUnit"
+            description: "Check business unit tagging"
+            pass_criteria: "Resources mapped to business processes"
+      azure:
+        commands:
+          - cmd: "az resource list --query '[?tags.BusinessUnit!=null]'"
+            description: "Check business unit tagging"
+            pass_criteria: "Resources mapped to business"
+
+  PM-14:
+    title: Testing, Training, and Monitoring
+    description: |
+      Implement a process for ensuring that security and privacy testing, training, and monitoring
+      are conducted with defined frequency.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws securityhub describe-hub"
+            description: "Check continuous monitoring"
+            pass_criteria: "Monitoring is continuous"
+          - cmd: "aws inspector2 list-coverage"
+            description: "Check vulnerability scanning"
+            pass_criteria: "Testing is regular"
+      azure:
+        commands:
+          - cmd: "az security pricing list"
+            description: "Check Security Center"
+            pass_criteria: "Monitoring is active"
+
+  PM-16:
+    title: Threat Awareness Program
+    description: |
+      Implement a threat awareness program that includes a cross-organization information-sharing capability.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws guardduty list-detectors"
+            description: "Check threat detection"
+            pass_criteria: "GuardDuty provides threat awareness"
+          - cmd: "aws securityhub describe-products"
+            description: "Check Security Hub integrations"
+            pass_criteria: "Threat intelligence integrated"
+      azure:
+        commands:
+          - cmd: "az sentinel threat-indicator list --resource-group RG --workspace-name WS"
+            description: "Check threat indicators"
+            pass_criteria: "Threat intelligence available"
+      gcp:
+        commands:
+          - cmd: "gcloud scc sources list --organization=ORG_ID"
+            description: "Check threat sources"
+            pass_criteria: "Threat sources configured"

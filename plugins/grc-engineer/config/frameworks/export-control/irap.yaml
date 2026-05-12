@@ -1,0 +1,335 @@
+name: IRAP - Information Security Registered Assessors Program
+version: "2024"
+description: |
+  Australian Government information security assessment framework aligned with the
+  Information Security Manual (ISM). Managed by the Australian Cyber Security Centre (ACSC).
+
+applicable_to:
+  - Australian Government agencies
+  - Cloud service providers serving Australian Government
+  - Organizations handling Australian classified information
+  - PROTECTED, SECRET, and TOP SECRET classifications
+
+classification_levels:
+  official:
+    description: Routine government information
+    controls: Essential Eight baseline
+  official_sensitive:
+    description: Sensitive government information
+    controls: ISM controls for OFFICIAL:Sensitive
+  protected:
+    description: Information requiring protection from compromise
+    controls: Full ISM controls for PROTECTED
+  secret:
+    description: Information requiring substantial protection
+    controls: Enhanced ISM controls for SECRET
+  top_secret:
+    description: Exceptionally sensitive information
+    controls: Maximum ISM controls for TOP SECRET
+
+controls:
+  IRAP-GOV-1:
+    title: Guidelines for Personnel Security
+    description: Personnel security controls for access to government systems
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-users"
+            description: "List IAM users for personnel security review"
+            pass_criteria: "All users have appropriate clearances"
+          - cmd: "aws iam list-mfa-devices"
+            description: "Check MFA devices"
+            pass_criteria: "MFA enabled for all users"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== IRAP Personnel Security ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== IAM Users ==="
+          aws iam list-users --query 'Users[*].{UserName:UserName,CreateDate:CreateDate}' --output table
+          echo ""
+          echo "=== MFA Status ==="
+          aws iam list-virtual-mfa-devices --query 'VirtualMFADevices[*].{User:User.UserName,SerialNumber:SerialNumber}' --output table
+      azure:
+        commands:
+          - cmd: "az ad user list"
+            description: "List Azure AD users"
+            pass_criteria: "Users have appropriate clearances"
+      gcp:
+        commands:
+          - cmd: "gcloud iam service-accounts list"
+            description: "List service accounts"
+            pass_criteria: "Access appropriately controlled"
+
+  IRAP-GOV-2:
+    title: Guidelines for Information Security Documentation
+    description: Documentation requirements for system security plans
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws securityhub describe-hub"
+            description: "Check Security Hub documentation"
+            pass_criteria: "Security posture is documented"
+          - cmd: "aws configservice describe-conformance-packs"
+            description: "Check conformance pack documentation"
+            pass_criteria: "Compliance is documented"
+
+  IRAP-GOV-3:
+    title: Guidelines for Physical Security
+    description: Physical security for systems and facilities
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ec2 describe-regions --query 'Regions[?contains(RegionName,`ap-southeast-2`)].RegionName'"
+            description: "Check for Australian region availability"
+            pass_criteria: "Sydney region (ap-southeast-2) used for Australian data"
+          - cmd: "aws outposts list-outposts"
+            description: "Check for on-premises infrastructure"
+            pass_criteria: "Outposts meet physical security requirements"
+
+  IRAP-ISM-1:
+    title: Essential Eight - Application Control
+    description: Only approved applications should be allowed to execute
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws lambda list-functions --query 'Functions[*].{Name:FunctionName,Runtime:Runtime}'"
+            description: "List Lambda functions"
+            pass_criteria: "Only approved functions deployed"
+          - cmd: "aws ecr describe-repositories"
+            description: "List ECR repositories"
+            pass_criteria: "Container images are controlled"
+      azure:
+        commands:
+          - cmd: "az functionapp list"
+            description: "List function apps"
+            pass_criteria: "Only approved apps deployed"
+      gcp:
+        commands:
+          - cmd: "gcloud functions list"
+            description: "List Cloud Functions"
+            pass_criteria: "Only approved functions deployed"
+
+  IRAP-ISM-2:
+    title: Essential Eight - Patch Applications
+    description: Patch applications within appropriate timeframes
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm describe-instance-patch-states"
+            description: "Check patch compliance"
+            pass_criteria: "Systems patched within 48 hours for critical vulnerabilities"
+          - cmd: "aws inspector2 list-findings --filter-criteria '{\"severity\":[{\"comparison\":\"EQUALS\",\"value\":\"CRITICAL\"}]}'"
+            description: "Check for critical vulnerabilities"
+            pass_criteria: "No unpatched critical vulnerabilities"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== IRAP Essential Eight - Patch Applications ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Patch Compliance Status ==="
+          aws ssm describe-instance-patch-states --query 'InstancePatchStates[*].{Instance:InstanceId,Installed:InstalledCount,Missing:MissingCount}' --output table
+          echo ""
+          echo "=== Critical Vulnerabilities ==="
+          aws inspector2 list-findings --filter-criteria '{"severity":[{"comparison":"EQUALS","value":"CRITICAL"}]}' --max-results 10 --query 'findings[*].{Title:title,Severity:severity}' --output table 2>/dev/null || echo "Inspector not enabled"
+      azure:
+        commands:
+          - cmd: "az security assessment list"
+            description: "Check security assessments"
+            pass_criteria: "Applications are patched"
+
+  IRAP-ISM-3:
+    title: Essential Eight - Configure Microsoft Office Macros
+    description: Block or restrict Office macros
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "echo 'Office macro settings are managed at the endpoint level'"
+            description: "Endpoint management check"
+            pass_criteria: "Verify via endpoint management solution"
+
+  IRAP-ISM-4:
+    title: Essential Eight - User Application Hardening
+    description: Harden user applications (browsers, PDF readers, Office)
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws workspaces describe-workspaces"
+            description: "Check WorkSpaces configuration"
+            pass_criteria: "WorkSpaces have hardened application settings"
+
+  IRAP-ISM-5:
+    title: Essential Eight - Restrict Administrative Privileges
+    description: Limit administrative privileges based on duties
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-users-in-group --group-name Administrators"
+            description: "List admin users"
+            pass_criteria: "Minimal users with admin access"
+          - cmd: "aws iam list-attached-user-policies --user-name USERNAME"
+            description: "Check user policies"
+            pass_criteria: "Least privilege enforced"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== IRAP Essential Eight - Administrative Privileges ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Users with AdministratorAccess ==="
+          aws iam get-account-authorization-details --filter User --query 'UserDetailList[?AttachedManagedPolicies[?PolicyName==`AdministratorAccess`]].UserName' --output table
+          echo ""
+          echo "=== Roles with AdministratorAccess ==="
+          aws iam get-account-authorization-details --filter Role --query 'RoleDetailList[?AttachedManagedPolicies[?PolicyName==`AdministratorAccess`]].RoleName' --output table
+      azure:
+        commands:
+          - cmd: "az role assignment list --role 'Owner'"
+            description: "List Owner role assignments"
+            pass_criteria: "Minimal owner assignments"
+      gcp:
+        commands:
+          - cmd: "gcloud projects get-iam-policy PROJECT --filter='bindings.role:owner'"
+            description: "List project owners"
+            pass_criteria: "Minimal owner access"
+
+  IRAP-ISM-6:
+    title: Essential Eight - Patch Operating Systems
+    description: Patch operating systems within appropriate timeframes
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm describe-patch-baselines"
+            description: "Check patch baselines"
+            pass_criteria: "Patch baselines are current"
+          - cmd: "aws ssm describe-instance-patch-states"
+            description: "Check OS patch status"
+            pass_criteria: "OS patches applied within 48 hours for critical"
+      azure:
+        commands:
+          - cmd: "az vm update-assessment list"
+            description: "Check VM updates"
+            pass_criteria: "VMs are patched"
+      gcp:
+        commands:
+          - cmd: "gcloud compute os-config patch-deployments list"
+            description: "Check patch deployments"
+            pass_criteria: "Patch deployments configured"
+
+  IRAP-ISM-7:
+    title: Essential Eight - Multi-Factor Authentication
+    description: MFA for privileged and remote access
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam generate-credential-report && sleep 3 && aws iam get-credential-report --query 'Content' --output text | base64 -d | cut -d',' -f1,8"
+            description: "Check MFA status for all users"
+            pass_criteria: "MFA enabled for all users"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== IRAP Essential Eight - MFA ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== MFA Status ==="
+          aws iam generate-credential-report >/dev/null 2>&1
+          sleep 5
+          aws iam get-credential-report --query 'Content' --output text | base64 -d | awk -F',' 'NR==1 || NR>1 {print $1,$8}'
+      azure:
+        commands:
+          - cmd: "az ad conditional-access policy list"
+            description: "Check MFA policies"
+            pass_criteria: "MFA enforced via CA policies"
+      gcp:
+        commands:
+          - cmd: "gcloud identity groups list"
+            description: "Check identity groups"
+            pass_criteria: "2-step verification enforced"
+
+  IRAP-ISM-8:
+    title: Essential Eight - Regular Backups
+    description: Perform and test backups of important data
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws backup list-backup-plans"
+            description: "Check backup plans"
+            pass_criteria: "Backup plans cover critical data"
+          - cmd: "aws backup list-backup-jobs --by-state COMPLETED"
+            description: "Check completed backup jobs"
+            pass_criteria: "Backups are completing successfully"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== IRAP Essential Eight - Backups ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Backup Plans ==="
+          aws backup list-backup-plans --query 'BackupPlansList[*].{Name:BackupPlanName,Id:BackupPlanId}' --output table
+          echo ""
+          echo "=== Recent Backup Jobs ==="
+          aws backup list-backup-jobs --by-state COMPLETED --max-results 10 --query 'BackupJobs[*].{Resource:ResourceType,Status:State,Completed:CompletionDate}' --output table
+      azure:
+        commands:
+          - cmd: "az backup vault list"
+            description: "Check backup vaults"
+            pass_criteria: "Backup vaults configured"
+      gcp:
+        commands:
+          - cmd: "gcloud compute snapshots list"
+            description: "List snapshots"
+            pass_criteria: "Snapshots are current"
+
+  IRAP-DATA-1:
+    title: Data Sovereignty - Australian Data Residency
+    description: PROTECTED and above data must remain in Australia
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ec2 describe-availability-zones --region ap-southeast-2"
+            description: "Check Sydney region availability"
+            pass_criteria: "Sydney region used for Australian Government data"
+          - cmd: "aws s3api get-bucket-location --bucket BUCKET"
+            description: "Check S3 bucket location"
+            pass_criteria: "Buckets in ap-southeast-2"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== IRAP Data Sovereignty ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== S3 Bucket Locations ==="
+          for bucket in $(aws s3api list-buckets --query 'Buckets[*].Name' --output text); do
+            location=$(aws s3api get-bucket-location --bucket "$bucket" --query 'LocationConstraint' --output text)
+            echo "$bucket: $location"
+          done
+          echo ""
+          echo "=== RDS Locations ==="
+          aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,Region:AvailabilityZone}' --output table
+      azure:
+        commands:
+          - cmd: "az resource list --query '[].{Name:name,Location:location}'"
+            description: "Check resource locations"
+            pass_criteria: "Resources in australiaeast or australiasoutheast"
+      gcp:
+        commands:
+          - cmd: "gcloud storage buckets list --format='table(name,location)'"
+            description: "Check bucket locations"
+            pass_criteria: "Buckets in australia-southeast1 or australia-southeast2"
+
+australian_regions:
+  aws:
+    - ap-southeast-2  # Sydney
+  azure:
+    - australiaeast   # NSW
+    - australiasoutheast  # Victoria
+  gcp:
+    - australia-southeast1  # Sydney
+    - australia-southeast2  # Melbourne
+
+certified_providers:
+  description: Cloud providers with IRAP assessments
+  aws:
+    certification: "AWS Sydney region IRAP assessed to PROTECTED"
+    link: "https://aws.amazon.com/compliance/irap/"
+  azure:
+    certification: "Azure Australia IRAP assessed to PROTECTED"
+    link: "https://docs.microsoft.com/en-us/azure/compliance/offerings/offering-irap-australia"
+  gcp:
+    certification: "GCP Sydney/Melbourne IRAP assessed to PROTECTED"
+    link: "https://cloud.google.com/security/compliance/irap"

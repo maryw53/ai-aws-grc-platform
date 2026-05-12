@@ -1,0 +1,310 @@
+name: NIST 800-53 RA - Risk Assessment
+family: RA
+description: Controls for security categorization, risk assessment, and vulnerability management
+version: Rev 5
+
+controls:
+  RA-1:
+    title: Policy and Procedures
+    description: |
+      Develop, document, and disseminate risk assessment policy and procedures.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws securityhub describe-hub"
+            description: "Check Security Hub for risk aggregation"
+            pass_criteria: "Security Hub is enabled"
+      azure:
+        commands:
+          - cmd: "az security assessment list"
+            description: "Check security assessments"
+            pass_criteria: "Assessments are configured"
+      gcp:
+        commands:
+          - cmd: "gcloud scc settings describe --organization=ORG_ID"
+            description: "Check SCC settings"
+            pass_criteria: "SCC is configured"
+
+  RA-2:
+    title: Security Categorization
+    description: |
+      Categorize the system and information processed, stored, and transmitted by the system.
+      Document the security categorization results in the security plan.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws resourcegroupstaggingapi get-resources --tag-filters Key=DataClassification"
+            description: "Check for data classification tags"
+            pass_criteria: "Resources are categorized"
+          - cmd: "aws macie2 get-classification-export-configuration"
+            description: "Check Macie classification"
+            pass_criteria: "Macie classifies data"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== RA-2 Security Categorization ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Resources by Classification Tag ==="
+          aws resourcegroupstaggingapi get-resources --tag-filters Key=DataClassification --query 'ResourceTagMappingList[*].{ARN:ResourceARN,Tags:Tags}' --output table
+          echo ""
+          echo "=== Macie Classification ==="
+          aws macie2 describe-buckets --query 'buckets[*].{Bucket:bucketName,ClassifiableCount:classifiableObjectCount}' --output table 2>/dev/null || echo "Macie not enabled"
+      azure:
+        commands:
+          - cmd: "az resource list --query '[?tags.DataClassification!=null].{Name:name,Classification:tags.DataClassification}'"
+            description: "Check classification tags"
+            pass_criteria: "Resources are categorized"
+      gcp:
+        commands:
+          - cmd: "gcloud asset search-all-resources --query='labels.classification:*'"
+            description: "Search by classification label"
+            pass_criteria: "Resources are categorized"
+
+  RA-3:
+    title: Risk Assessment
+    description: |
+      Conduct a risk assessment to identify threats, vulnerabilities, likelihood, and impact.
+      Prioritize risks based on assessment results.
+      Update the risk assessment periodically.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws securityhub get-findings --filters '{\"SeverityLabel\":[{\"Value\":\"CRITICAL\",\"Comparison\":\"EQUALS\"}]}' --max-items 10"
+            description: "Get critical findings"
+            pass_criteria: "Critical risks are identified"
+          - cmd: "aws inspector2 list-findings --filter-criteria '{\"severity\":[{\"comparison\":\"EQUALS\",\"value\":\"CRITICAL\"}]}'"
+            description: "Get critical vulnerability findings"
+            pass_criteria: "Vulnerabilities are assessed"
+          - cmd: "aws guardduty list-findings --detector-id DETECTOR --finding-criteria '{\"Criterion\":{\"severity\":{\"Gte\":7}}}'"
+            description: "Get high-severity GuardDuty findings"
+            pass_criteria: "Threats are assessed"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== RA-3 Risk Assessment ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Security Hub Finding Summary ==="
+          aws securityhub get-findings --max-items 50 --query 'Findings[*].Severity.Label' --output text | sort | uniq -c | sort -rn
+          echo ""
+          echo "=== Critical Findings ==="
+          aws securityhub get-findings --filters '{"SeverityLabel":[{"Value":"CRITICAL","Comparison":"EQUALS"}]}' --max-items 10 --query 'Findings[*].{Title:Title,Resource:Resources[0].Id}' --output table
+          echo ""
+          echo "=== Inspector Vulnerability Summary ==="
+          aws inspector2 list-finding-aggregations --aggregation-type SEVERITY --query 'responses[*].{Severity:severityCounts}' --output json 2>/dev/null || echo "Inspector not enabled"
+      azure:
+        commands:
+          - cmd: "az security assessment list --query '[?status.code==`Unhealthy`].{Name:name,Severity:metadata.severity}'"
+            description: "Get unhealthy assessments"
+            pass_criteria: "Risks are assessed"
+          - cmd: "az security alert list --query '[*].{Name:alertDisplayName,Severity:severity}'"
+            description: "Get security alerts"
+            pass_criteria: "Threats are assessed"
+      gcp:
+        commands:
+          - cmd: "gcloud scc findings list ORG_ID --filter='severity>=HIGH'"
+            description: "Get high-severity findings"
+            pass_criteria: "Risks are assessed"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get events --field-selector type=Warning -A"
+            description: "Get warning events"
+            pass_criteria: "Risks are monitored"
+
+  RA-3(1):
+    title: Supply Chain Risk Assessment
+    description: |
+      Assess supply chain risks associated with systems, system components, and services.
+    baseline: [high]
+    parent: RA-3
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ecr describe-image-scan-findings --repository-name REPO --image-id imageTag=latest"
+            description: "Check container image vulnerabilities"
+            pass_criteria: "Third-party images are scanned"
+          - cmd: "aws codeartifact list-packages --domain DOMAIN --repository REPO"
+            description: "List CodeArtifact packages"
+            pass_criteria: "Dependencies are tracked"
+      azure:
+        commands:
+          - cmd: "az acr repository show-manifests --name REGISTRY --repository REPO"
+            description: "Check container repository"
+            pass_criteria: "Container sources are tracked"
+      gcp:
+        commands:
+          - cmd: "gcloud artifacts docker images list LOCATION-docker.pkg.dev/PROJECT/REPO"
+            description: "List artifact images"
+            pass_criteria: "Artifacts are tracked"
+
+  RA-5:
+    title: Vulnerability Monitoring and Scanning
+    description: |
+      Monitor and scan for vulnerabilities in the system and hosted applications.
+      Update system vulnerabilities to be scanned.
+      Analyze and share scan reports and results.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws inspector2 list-coverage --filter-criteria '{\"resourceType\":[{\"comparison\":\"EQUALS\",\"value\":\"EC2_INSTANCE\"}]}'"
+            description: "Check Inspector EC2 coverage"
+            pass_criteria: "EC2 instances are scanned"
+          - cmd: "aws inspector2 list-findings --max-results 20"
+            description: "List vulnerability findings"
+            pass_criteria: "Vulnerabilities are identified"
+          - cmd: "aws ecr describe-image-scan-findings --repository-name REPO --image-id imageTag=latest"
+            description: "Check ECR image scan"
+            pass_criteria: "Container images are scanned"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== RA-5 Vulnerability Scanning ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Inspector Coverage ==="
+          aws inspector2 list-coverage --query 'coveredResources[*].{ResourceId:resourceId,Type:resourceType,Status:scanStatus.statusCode}' --output table 2>/dev/null || echo "Inspector not enabled"
+          echo ""
+          echo "=== Vulnerability Findings by Severity ==="
+          aws inspector2 list-finding-aggregations --aggregation-type SEVERITY --output json 2>/dev/null || echo "Inspector not enabled"
+          echo ""
+          echo "=== ECR Image Scan Results ==="
+          for repo in $(aws ecr describe-repositories --query 'repositories[*].repositoryName' --output text); do
+            echo "Repository: $repo"
+            aws ecr describe-image-scan-findings --repository-name "$repo" --image-id imageTag=latest --query 'imageScanFindings.findingSeverityCounts' 2>/dev/null || echo "No scans"
+          done
+      azure:
+        commands:
+          - cmd: "az security assessment list --query '[?contains(name,`vulnerability`)]'"
+            description: "Check vulnerability assessments"
+            pass_criteria: "Vulnerabilities are scanned"
+          - cmd: "az acr task list --registry REGISTRY"
+            description: "Check ACR scan tasks"
+            pass_criteria: "Container scanning is configured"
+      gcp:
+        commands:
+          - cmd: "gcloud container images describe IMAGE --show-package-vulnerability"
+            description: "Check image vulnerabilities"
+            pass_criteria: "Images are scanned"
+          - cmd: "gcloud scc findings list ORG_ID --filter='category:Vulnerability'"
+            description: "List vulnerability findings"
+            pass_criteria: "Vulnerabilities are tracked"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get pods -A -o json | jq '.items[].spec.containers[].image' | sort -u"
+            description: "List unique images for scanning"
+            pass_criteria: "Images are tracked for scanning"
+
+  RA-5(2):
+    title: Update Vulnerabilities to Be Scanned
+    description: |
+      Update the system vulnerabilities to be scanned prior to a new scan.
+    baseline: [moderate, high]
+    parent: RA-5
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws inspector2 describe-organization-configuration"
+            description: "Check Inspector configuration"
+            pass_criteria: "Inspector auto-updates vulnerability database"
+      azure:
+        commands:
+          - cmd: "az security assessment-metadata list"
+            description: "List assessment metadata"
+            pass_criteria: "Assessments are current"
+      gcp:
+        commands:
+          - cmd: "gcloud container images list-tags IMAGE"
+            description: "List image tags for scanning"
+            pass_criteria: "New images are scanned"
+
+  RA-5(3):
+    title: Breadth and Depth of Coverage
+    description: |
+      Define the breadth and depth of vulnerability scanning coverage.
+    baseline: [moderate, high]
+    parent: RA-5
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws inspector2 list-coverage-statistics"
+            description: "Get coverage statistics"
+            pass_criteria: "Coverage is comprehensive"
+      azure:
+        commands:
+          - cmd: "az security assessment list --query 'length(@)'"
+            description: "Count assessments"
+            pass_criteria: "Coverage is comprehensive"
+
+  RA-5(5):
+    title: Privileged Access
+    description: |
+      Implement privileged access authorization to operating systems, databases, and applications
+      for vulnerability scanning.
+    baseline: [moderate, high]
+    parent: RA-5
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ssm describe-instance-information --query 'InstanceInformationList[*].{Id:InstanceId,PingStatus:PingStatus}'"
+            description: "Check SSM access for scanning"
+            pass_criteria: "SSM provides privileged access for scanning"
+          - cmd: "aws inspector2 list-coverage --filter-criteria '{\"scanStatusCode\":[{\"comparison\":\"EQUALS\",\"value\":\"ACTIVE\"}]}'"
+            description: "Check active scan coverage"
+            pass_criteria: "Scanning has appropriate access"
+      azure:
+        commands:
+          - cmd: "az vm run-command list --location LOCATION"
+            description: "Check run command capability"
+            pass_criteria: "Run commands enable scanning"
+
+  RA-7:
+    title: Risk Response
+    description: |
+      Respond to findings from security and privacy assessments, monitoring, and audits.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws securityhub get-findings --filters '{\"WorkflowStatus\":[{\"Value\":\"RESOLVED\",\"Comparison\":\"EQUALS\"}]}' --max-items 10"
+            description: "Check resolved findings"
+            pass_criteria: "Risks are being addressed"
+          - cmd: "aws configservice describe-remediation-execution-status"
+            description: "Check remediation status"
+            pass_criteria: "Remediations are executed"
+      azure:
+        commands:
+          - cmd: "az policy remediation list"
+            description: "List remediations"
+            pass_criteria: "Risks are remediated"
+      gcp:
+        commands:
+          - cmd: "gcloud scc findings list ORG_ID --filter='state=INACTIVE'"
+            description: "List resolved findings"
+            pass_criteria: "Findings are addressed"
+
+  RA-9:
+    title: Criticality Analysis
+    description: |
+      Identify critical system components and functions by performing a criticality analysis.
+    baseline: [high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws resourcegroupstaggingapi get-resources --tag-filters Key=Criticality,Values=High"
+            description: "Find high-criticality resources"
+            pass_criteria: "Critical resources are tagged"
+          - cmd: "aws rds describe-db-instances --query 'DBInstances[?MultiAZ==`true`]'"
+            description: "Check Multi-AZ for critical databases"
+            pass_criteria: "Critical databases have HA"
+      azure:
+        commands:
+          - cmd: "az resource list --query '[?tags.Criticality==`High`]'"
+            description: "Find critical resources"
+            pass_criteria: "Critical resources are tagged"
+      gcp:
+        commands:
+          - cmd: "gcloud asset search-all-resources --query='labels.criticality:high'"
+            description: "Find critical resources"
+            pass_criteria: "Critical resources are labeled"

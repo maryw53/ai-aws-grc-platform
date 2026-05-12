@@ -1,0 +1,77 @@
+name: SOC 2
+version: "2017"
+description: Service Organization Control 2 - Trust Services Criteria
+
+controls:
+  CC1.1:
+    title: COSO Principle 1
+    description: The entity demonstrates a commitment to integrity and ethical values.
+    category: Control Environment
+
+  CC6.1:
+    title: Logical and Physical Access Controls
+    description: The entity implements logical access security software, infrastructure, and architectures over protected information assets.
+    category: Logical and Physical Access Controls
+    keywords:
+      - iam
+      - access control
+      - authentication
+      - authorization
+      - rbac
+
+  CC6.2:
+    title: Prior to Issuing System Credentials
+    description: The entity discontinues the use of user credentials and removes access when appropriate.
+    category: Logical and Physical Access Controls
+    keywords:
+      - user registration
+      - deprovisioning
+      - offboarding
+
+  CC6.3:
+    title: System Credentials
+    description: The entity issues and manages system credentials for users and processes.
+    category: Logical and Physical Access Controls
+    keywords:
+      - credentials
+      - secrets
+      - api keys
+
+  CC7.1:
+    title: Detection and Monitoring
+    description: The entity detects, and monitors security events affecting system components.
+    category: System Operations
+    keywords:
+      - logging
+      - monitoring
+      - cloudtrail
+      - audit log
+
+  CC7.2:
+    title: System Communications
+    description: The entity authorizes, monitors, and controls the flow of information through systems and networks.
+    category: System Operations
+    keywords:
+      - encryption
+      - network
+      - tls
+      - ssl
+      - firewall
+
+  CC7.3:
+    title: Vulnerability Management
+    description: The entity evaluates and manages the vulnerability of system components.
+    category: System Operations
+    keywords:
+      - vulnerability
+      - patching
+      - scanning
+
+  CC8.1:
+    title: Change Management
+    description: The entity authorizes, designs, develops or acquires, configures, documents, tests, approves, and implements changes.
+    category: Change Management
+    keywords:
+      - change management
+      - deployment
+      - ci/cd

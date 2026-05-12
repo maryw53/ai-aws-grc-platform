@@ -1,0 +1,55 @@
+# In-progress plugin work (keep untracked until ready)
+/data/
+/plugins/grc-audit-manager/
+/plugins/grc-cert-manager/
+/plugins/grc-program-manager/
+
+# Operator caches and runtime outputs (never commit)
+/gap-assessment-*/
+/monitor-continuous-*/
+/monitor-reports/
+*.normalized.json
+
+# Evidence artifacts (never commit: real usernames, credentials, PII)
+/evidence/
+**/evidence/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+
+# Environment / credentials
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+.aws/
+.gcloud/
+credentials.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# Python (if any connectors grow Python deps)
+__pycache__/
+*.pyc
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+
+# Generated artifacts
+/tests/output/
+/tmp/

@@ -1,0 +1,582 @@
+name: AWS
+description: Amazon Web Services evidence collection templates
+
+templates:
+  mfa_root:
+    name: Root Account MFA
+    control: MFA for all root users
+    keywords:
+      - mfa
+      - root
+      - multi-factor
+    formats:
+      python: |
+        #!/usr/bin/env python3
+        """
+        Evidence Collection Script
+        Control: MFA for all root users
+        Provider: AWS
+        Generated: {timestamp}
+        """
+
+        import boto3
+        import json
+        from datetime import datetime
+
+        iam = boto3.client('iam')
+
+        def collect_mfa_evidence():
+            """Collect evidence for MFA requirement on root users."""
+            evidence = {
+                "control": "MFA for all root users",
+                "timestamp": datetime.utcnow().isoformat(),
+                "provider": "AWS",
+                "results": []
+            }
+
+            try:
+                # Get account summary
+                summary = iam.get_account_summary()
+                mfa_enabled = summary['SummaryMap'].get('AccountMFAEnabled', 0)
+
+                evidence["results"].append({
+                    "check": "Root account MFA status",
+                    "status": "PASS" if mfa_enabled == 1 else "FAIL",
+                    "details": f"MFA Enabled: {mfa_enabled == 1}",
+                    "evidence": {
+                        "AccountMFAEnabled": mfa_enabled
+                    }
+                })
+
+                # Get credential report
+                try:
+                    iam.generate_credential_report()
+                    import time
+                    time.sleep(5)
+                    response = iam.get_credential_report()
+                    evidence["results"].append({
+                        "check": "Credential report generated",
+                        "status": "PASS",
+                        "details": "Credential report available for audit"
+                    })
+                except Exception as e:
+                    evidence["results"].append({
+                        "check": "Credential report",
+                        "status": "WARN",
+                        "details": f"Could not generate credential report: {str(e)}"
+                    })
+
+            except Exception as e:
+                evidence["error"] = str(e)
+                evidence["status"] = "ERROR"
+
+            return evidence
+
+        if __name__ == "__main__":
+            result = collect_mfa_evidence()
+            print(json.dumps(result, indent=2))
+      bash: |
+        #!/bin/bash
+        # Evidence Collection Script
+        # Control: MFA for all root users
+        # Provider: AWS
+        # Generated: {timestamp}
+
+        set -e
+
+        echo "=== AWS MFA Evidence Collection ==="
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        echo "--- Root Account MFA Status ---"
+        aws iam get-account-summary --query 'SummaryMap.AccountMFAEnabled' --output text
+
+        echo ""
+        echo "--- Generating Credential Report ---"
+        aws iam generate-credential-report
+        sleep 5
+        aws iam get-credential-report --query 'Content' --output text | base64 -d > credential-report.csv
+
+        echo ""
+        echo "--- Users Without MFA ---"
+        cat credential-report.csv | awk -F',' 'NR>1 && $4=="true" && $8=="false" {print $1}'
+
+        echo ""
+        echo "Evidence collected. See credential-report.csv for full details."
+    instructions: |
+      ## AWS CLI Prerequisites
+
+      1. **Install AWS CLI:**
+         ```bash
+         # macOS
+         brew install awscli
+
+         # Linux
+         curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+         unzip awscliv2.zip && sudo ./aws/install
+         ```
+
+      2. **Configure credentials:**
+         ```bash
+         aws configure
+         # Or use environment variables:
+         export AWS_ACCESS_KEY_ID=your-key
+         export AWS_SECRET_ACCESS_KEY=your-secret
+         export AWS_DEFAULT_REGION=us-east-1
+         ```
+
+      3. **Required IAM permissions:**
+         - iam:GetAccountSummary
+         - iam:GenerateCredentialReport
+         - iam:GetCredentialReport
+
+  s3_encryption:
+    name: S3 Bucket Encryption
+    control: All S3 buckets encrypted at rest
+    keywords:
+      - s3
+      - encrypt
+      - bucket
+      - storage
+    formats:
+      python: |
+        #!/usr/bin/env python3
+        """
+        Evidence Collection Script
+        Control: All S3 buckets encrypted at rest
+        Provider: AWS
+        Generated: {timestamp}
+        """
+
+        import boto3
+        import json
+        from datetime import datetime
+
+        s3 = boto3.client('s3')
+
+        def collect_s3_encryption_evidence():
+            """Collect evidence for S3 bucket encryption."""
+            evidence = {
+                "control": "All S3 buckets encrypted at rest",
+                "timestamp": datetime.utcnow().isoformat(),
+                "provider": "AWS",
+                "results": [],
+                "summary": {"total": 0, "encrypted": 0, "unencrypted": 0}
+            }
+
+            try:
+                buckets = s3.list_buckets()
+
+                for bucket in buckets['Buckets']:
+                    bucket_name = bucket['Name']
+                    evidence["summary"]["total"] += 1
+
+                    try:
+                        encryption = s3.get_bucket_encryption(Bucket=bucket_name)
+                        rules = encryption.get('ServerSideEncryptionConfiguration', {}).get('Rules', [])
+
+                        if rules:
+                            evidence["summary"]["encrypted"] += 1
+                            evidence["results"].append({
+                                "bucket": bucket_name,
+                                "status": "PASS",
+                                "encryption": rules[0].get('ApplyServerSideEncryptionByDefault', {})
+                            })
+                        else:
+                            evidence["summary"]["unencrypted"] += 1
+                            evidence["results"].append({
+                                "bucket": bucket_name,
+                                "status": "FAIL",
+                                "details": "No encryption rules configured"
+                            })
+
+                    except s3.exceptions.ClientError as e:
+                        if 'ServerSideEncryptionConfigurationNotFoundError' in str(e):
+                            evidence["summary"]["unencrypted"] += 1
+                            evidence["results"].append({
+                                "bucket": bucket_name,
+                                "status": "FAIL",
+                                "details": "No encryption configuration found"
+                            })
+                        else:
+                            evidence["results"].append({
+                                "bucket": bucket_name,
+                                "status": "ERROR",
+                                "details": str(e)
+                            })
+
+            except Exception as e:
+                evidence["error"] = str(e)
+                evidence["status"] = "ERROR"
+
+            return evidence
+
+        if __name__ == "__main__":
+            result = collect_s3_encryption_evidence()
+            print(json.dumps(result, indent=2))
+      bash: |
+        #!/bin/bash
+        # Evidence Collection Script
+        # Control: All S3 buckets encrypted at rest
+        # Provider: AWS
+        # Generated: {timestamp}
+
+        set -e
+
+        echo "=== S3 Bucket Encryption Evidence ==="
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        echo "--- Listing All Buckets ---"
+        BUCKETS=$(aws s3api list-buckets --query 'Buckets[].Name' --output text)
+
+        echo ""
+        echo "--- Encryption Status Per Bucket ---"
+        for bucket in $BUCKETS; do
+            echo -n "$bucket: "
+            encryption=$(aws s3api get-bucket-encryption --bucket "$bucket" 2>&1) && \
+                echo "ENCRYPTED - $(echo $encryption | jq -r '.ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm')" || \
+                echo "NOT ENCRYPTED"
+        done
+
+        echo ""
+        echo "--- Unencrypted Buckets ---"
+        for bucket in $BUCKETS; do
+            aws s3api get-bucket-encryption --bucket "$bucket" 2>/dev/null || echo "$bucket"
+        done
+    instructions: |
+      ## Required IAM Permissions
+      - s3:ListAllMyBuckets
+      - s3:GetEncryptionConfiguration
+
+  cloudtrail_logging:
+    name: CloudTrail Logging
+    control: CloudTrail enabled in all regions
+    keywords:
+      - cloudtrail
+      - logging
+      - audit
+      - trail
+    formats:
+      python: |
+        #!/usr/bin/env python3
+        """
+        Evidence Collection Script
+        Control: CloudTrail enabled in all regions
+        Provider: AWS
+        Generated: {timestamp}
+        """
+
+        import boto3
+        import json
+        from datetime import datetime
+
+        cloudtrail = boto3.client('cloudtrail')
+
+        def collect_cloudtrail_evidence():
+            evidence = {
+                "control": "CloudTrail enabled in all regions",
+                "timestamp": datetime.utcnow().isoformat(),
+                "provider": "AWS",
+                "results": []
+            }
+
+            try:
+                trails = cloudtrail.describe_trails()
+
+                for trail in trails['trailList']:
+                    status = cloudtrail.get_trail_status(Name=trail['Name'])
+
+                    evidence["results"].append({
+                        "trail_name": trail['Name'],
+                        "is_multi_region": trail.get('IsMultiRegionTrail', False),
+                        "is_logging": status.get('IsLogging', False),
+                        "s3_bucket": trail.get('S3BucketName'),
+                        "log_file_validation": trail.get('LogFileValidationEnabled', False),
+                        "status": "PASS" if status.get('IsLogging') and trail.get('IsMultiRegionTrail') else "WARN"
+                    })
+
+                if not trails['trailList']:
+                    evidence["results"].append({
+                        "status": "FAIL",
+                        "details": "No CloudTrail trails configured"
+                    })
+
+            except Exception as e:
+                evidence["error"] = str(e)
+                evidence["status"] = "ERROR"
+
+            return evidence
+
+        if __name__ == "__main__":
+            result = collect_cloudtrail_evidence()
+            print(json.dumps(result, indent=2))
+      bash: |
+        #!/bin/bash
+        # Evidence Collection Script
+        # Control: CloudTrail enabled in all regions
+        # Provider: AWS
+        # Generated: {timestamp}
+
+        set -e
+
+        echo "=== CloudTrail Evidence Collection ==="
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        echo "--- All CloudTrail Trails ---"
+        aws cloudtrail describe-trails --query 'trailList[].{Name:Name,MultiRegion:IsMultiRegionTrail,S3Bucket:S3BucketName,LogValidation:LogFileValidationEnabled}' --output table
+
+        echo ""
+        echo "--- Trail Logging Status ---"
+        for trail in $(aws cloudtrail describe-trails --query 'trailList[].Name' --output text); do
+            echo -n "$trail: "
+            aws cloudtrail get-trail-status --name "$trail" --query 'IsLogging' --output text
+        done
+
+        echo ""
+        echo "--- Event Selectors ---"
+        for trail in $(aws cloudtrail describe-trails --query 'trailList[].Name' --output text); do
+            echo "Trail: $trail"
+            aws cloudtrail get-event-selectors --trail-name "$trail" --output yaml
+        done
+    instructions: |
+      ## Required IAM Permissions
+      - cloudtrail:DescribeTrails
+      - cloudtrail:GetTrailStatus
+      - cloudtrail:GetEventSelectors
+
+  kms_keys:
+    name: KMS Key Management
+    control: KMS keys properly configured
+    keywords:
+      - kms
+      - key
+      - encryption key
+      - cmk
+    formats:
+      python: |
+        #!/usr/bin/env python3
+        """
+        Evidence Collection Script
+        Control: KMS keys properly configured
+        Provider: AWS
+        Generated: {timestamp}
+        """
+
+        import boto3
+        import json
+        from datetime import datetime
+
+        kms = boto3.client('kms')
+
+        def collect_kms_evidence():
+            evidence = {
+                "control": "KMS keys properly configured",
+                "timestamp": datetime.utcnow().isoformat(),
+                "provider": "AWS",
+                "results": []
+            }
+
+            try:
+                paginator = kms.get_paginator('list_keys')
+
+                for page in paginator.paginate():
+                    for key in page['Keys']:
+                        key_id = key['KeyId']
+
+                        try:
+                            key_info = kms.describe_key(KeyId=key_id)['KeyMetadata']
+                            rotation_status = kms.get_key_rotation_status(KeyId=key_id) if key_info['KeyManager'] == 'CUSTOMER' else {}
+
+                            evidence["results"].append({
+                                "key_id": key_id,
+                                "description": key_info.get('Description', ''),
+                                "key_state": key_info.get('KeyState'),
+                                "key_manager": key_info.get('KeyManager'),
+                                "rotation_enabled": rotation_status.get('KeyRotationEnabled', 'N/A'),
+                                "status": "PASS" if key_info.get('KeyState') == 'Enabled' else "WARN"
+                            })
+                        except Exception as e:
+                            evidence["results"].append({
+                                "key_id": key_id,
+                                "status": "ERROR",
+                                "details": str(e)
+                            })
+
+            except Exception as e:
+                evidence["error"] = str(e)
+                evidence["status"] = "ERROR"
+
+            return evidence
+
+        if __name__ == "__main__":
+            result = collect_kms_evidence()
+            print(json.dumps(result, indent=2))
+      bash: |
+        #!/bin/bash
+        # Evidence Collection Script
+        # Control: KMS keys properly configured
+        # Provider: AWS
+        # Generated: {timestamp}
+
+        set -e
+
+        echo "=== KMS Key Evidence Collection ==="
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        echo "--- All KMS Keys ---"
+        aws kms list-keys --query 'Keys[].KeyId' --output text | tr '\t' '\n' | while read key_id; do
+            echo "Key: $key_id"
+            aws kms describe-key --key-id "$key_id" --query 'KeyMetadata.{State:KeyState,Manager:KeyManager,Description:Description}' --output yaml
+            echo "---"
+        done
+
+        echo ""
+        echo "--- Customer Managed Keys with Rotation Status ---"
+        aws kms list-keys --query 'Keys[].KeyId' --output text | tr '\t' '\n' | while read key_id; do
+            manager=$(aws kms describe-key --key-id "$key_id" --query 'KeyMetadata.KeyManager' --output text)
+            if [ "$manager" = "CUSTOMER" ]; then
+                echo -n "$key_id rotation: "
+                aws kms get-key-rotation-status --key-id "$key_id" --query 'KeyRotationEnabled' --output text
+            fi
+        done
+    instructions: |
+      ## Required IAM Permissions
+      - kms:ListKeys
+      - kms:DescribeKey
+      - kms:GetKeyRotationStatus
+
+  iam_access_analyzer:
+    name: IAM Access Analyzer
+    control: External access findings reviewed
+    keywords:
+      - access analyzer
+      - external access
+      - iam
+    formats:
+      python: |
+        #!/usr/bin/env python3
+        """
+        Evidence Collection Script
+        Control: External access findings reviewed
+        Provider: AWS
+        Generated: {timestamp}
+        """
+
+        import boto3
+        import json
+        from datetime import datetime
+
+        aa = boto3.client('accessanalyzer')
+
+        def collect_access_analyzer_evidence():
+            evidence = {
+                "control": "External access findings reviewed",
+                "timestamp": datetime.utcnow().isoformat(),
+                "provider": "AWS",
+                "results": []
+            }
+
+            try:
+                analyzers = aa.list_analyzers()
+
+                for analyzer in analyzers['analyzers']:
+                    findings = aa.list_findings(analyzerArn=analyzer['arn'])
+
+                    active_findings = [f for f in findings['findings'] if f['status'] == 'ACTIVE']
+
+                    evidence["results"].append({
+                        "analyzer_name": analyzer['name'],
+                        "analyzer_type": analyzer['type'],
+                        "status": analyzer['status'],
+                        "active_findings_count": len(active_findings),
+                        "findings": active_findings[:10],  # First 10 findings
+                        "overall_status": "PASS" if len(active_findings) == 0 else "WARN"
+                    })
+
+            except Exception as e:
+                evidence["error"] = str(e)
+                evidence["status"] = "ERROR"
+
+            return evidence
+
+        if __name__ == "__main__":
+            result = collect_access_analyzer_evidence()
+            print(json.dumps(result, indent=2))
+      bash: |
+        #!/bin/bash
+        # Evidence Collection Script
+        # Control: External access findings reviewed
+        # Provider: AWS
+        # Generated: {timestamp}
+
+        set -e
+
+        echo "=== IAM Access Analyzer Evidence ==="
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        echo "--- Configured Analyzers ---"
+        aws accessanalyzer list-analyzers --query 'analyzers[].{Name:name,Type:type,Status:status}' --output table
+
+        echo ""
+        echo "--- Active Findings ---"
+        for arn in $(aws accessanalyzer list-analyzers --query 'analyzers[].arn' --output text); do
+            echo "Analyzer: $arn"
+            aws accessanalyzer list-findings --analyzer-arn "$arn" --filter 'status={eq=["ACTIVE"]}' --output yaml
+        done
+    instructions: |
+      ## Required IAM Permissions
+      - access-analyzer:ListAnalyzers
+      - access-analyzer:ListFindings
+
+  default:
+    name: Generic AWS Evidence
+    control: "{control}"
+    formats:
+      python: |
+        #!/usr/bin/env python3
+        """
+        Evidence Collection Script
+        Control: {control}
+        Provider: AWS
+        Generated: {timestamp}
+        """
+
+        import boto3
+        import json
+        from datetime import datetime
+
+        def collect_evidence():
+            evidence = {
+                "control": "{control}",
+                "timestamp": datetime.utcnow().isoformat(),
+                "provider": "AWS",
+                "results": []
+            }
+
+            # Add your evidence collection logic here
+
+            return evidence
+
+        if __name__ == "__main__":
+            result = collect_evidence()
+            print(json.dumps(result, indent=2))
+      bash: |
+        #!/bin/bash
+        # Evidence Collection Script
+        # Control: {control}
+        # Provider: AWS
+        # Generated: {timestamp}
+
+        echo "=== Evidence Collection ==="
+        echo "Control: {control}"
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+        # Add your evidence collection commands here
+    instructions: |
+      ## Generic AWS Evidence Collection
+
+      Customize the script for your specific control requirement.

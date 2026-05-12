@@ -1,0 +1,66 @@
+{
+  "name": "grc-engineering-plugin",
+  "version": "0.0.4",
+  "description": "GRC engineering toolkit for Claude Code: connector findings to SCF crosswalk to multi-framework gap reports, policy-as-code, OSCAL workflows.",
+  "type": "module",
+  "scripts": {
+    "gap-assessment": "node plugins/grc-engineer/scripts/gap-assessment.js",
+    "pipeline-status": "bash plugins/grc-engineer/scripts/pipeline-status.sh",
+    "scan-iac": "node plugins/grc-engineer/scripts/scan-iac.js",
+    "test-control": "node plugins/grc-engineer/scripts/test-control.js",
+    "map-control": "node plugins/grc-engineer/scripts/map-control.js",
+    "generate-policy": "node plugins/grc-engineer/scripts/generate-policy.js",
+    "review-pr": "node plugins/grc-engineer/scripts/review-pr.js",
+    "collect-evidence": "node plugins/grc-engineer/scripts/collect-evidence.js",
+    "generate-interview-questions": "node plugins/grc-engineer/scripts/generate-interview-questions.js",
+    "record-automation-metrics": "node plugins/grc-engineer/scripts/record-automation-metrics.js",
+    "monitor-continuous": "node plugins/grc-engineer/scripts/monitor-continuous.js",
+    "dashboard:compliance-posture": "node plugins/dashboards/compliance-posture/scripts/serve.js",
+    "transform-risk": "node plugins/grc-engineer/scripts/transform-risk.js",
+    "frameworks": "node plugins/grc-engineer/scripts/frameworks.js",
+    "scaffold-framework": "node plugins/grc-engineer/scripts/scaffold-framework.js",
+    "generate-coverage": "node plugins/grc-engineer/scripts/generate-coverage.js",
+    "test:wiz-inspector": "node --test tests/wiz-inspector-collect.test.js",
+    "test:contract": "bash tests/validate-contract-fixtures.sh",
+    "test:grc-diagrams": "bash tests/validate-grc-diagram-skills.sh",
+    "test:plugin-manifests": "bash tests/validate-plugin-manifests.sh",
+    "test:contract:findings": "ajv validate --spec=draft2020 -c ajv-formats -s schemas/finding.schema.json -d 'tests/fixtures/findings/**/*.json'"
+  },
+  "keywords": [
+    "grc",
+    "compliance",
+    "security",
+    "audit",
+    "policy-as-code",
+    "oscal",
+    "fedramp",
+    "soc2",
+    "scf",
+    "claude-code-plugin",
+    "claude-desktop",
+    "claude-cowork"
+  ],
+  "license": "(MIT AND CC-BY-SA-4.0)",
+  "licenses": [
+    { "type": "MIT", "url": "https://github.com/GRCEngClub/claude-grc-engineering/blob/main/LICENSE" },
+    { "type": "CC-BY-SA-4.0", "url": "https://github.com/GRCEngClub/claude-grc-engineering/blob/main/plugins/frameworks/cis-controls/LICENSE-CIS.md" }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GRCEngClub/claude-grc-engineering.git"
+  },
+  "homepage": "https://github.com/GRCEngClub/claude-grc-engineering",
+  "bugs": {
+    "url": "https://github.com/GRCEngClub/claude-grc-engineering/issues"
+  },
+  "author": "GRC Engineering Club Contributors",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "js-yaml": "^4.1.1",
+    "@octokit/rest": "^20.0.2"
+  },
+  "devDependencies": {
+    "ajv-cli": "^5.0.0",
+    "ajv-formats": "^3.0.1"
+  }
+}

@@ -1,0 +1,574 @@
+name: NIST 800-53 CP - Contingency Planning
+family: CP
+description: Controls for system backup, recovery, and business continuity
+version: Rev 5
+
+controls:
+  CP-1:
+    title: Policy and Procedures
+    description: |
+      Develop, document, and disseminate contingency planning policy and procedures.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws backup list-backup-plans"
+            description: "List backup plans"
+            pass_criteria: "Backup plans are documented"
+      azure:
+        commands:
+          - cmd: "az backup policy list --resource-group RG --vault-name VAULT"
+            description: "List backup policies"
+            pass_criteria: "Backup policies are documented"
+      gcp:
+        commands:
+          - cmd: "gcloud compute resource-policies list"
+            description: "List resource policies"
+            pass_criteria: "Backup policies exist"
+
+  CP-2:
+    title: Contingency Plan
+    description: |
+      Develop a contingency plan that identifies essential mission and business functions,
+      provides recovery objectives and priorities, and addresses roles and responsibilities.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws backup list-backup-plans --query 'BackupPlansList[*].{Name:BackupPlanName,Id:BackupPlanId}'"
+            description: "List backup plans"
+            pass_criteria: "Backup plans support contingency"
+          - cmd: "aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,MultiAZ:MultiAZ,BackupRetention:BackupRetentionPeriod}'"
+            description: "Check RDS backup configuration"
+            pass_criteria: "RDS has backup configured"
+          - cmd: "aws elasticache describe-replication-groups"
+            description: "Check ElastiCache replication"
+            pass_criteria: "Caching layer has redundancy"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== CP-2 Contingency Plan ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== AWS Backup Plans ==="
+          aws backup list-backup-plans --output table
+          echo ""
+          echo "=== RDS Backup Configuration ==="
+          aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,MultiAZ:MultiAZ,BackupRetention:BackupRetentionPeriod,Engine:Engine}' --output table
+          echo ""
+          echo "=== S3 Versioning Status ==="
+          for bucket in $(aws s3api list-buckets --query 'Buckets[*].Name' --output text); do
+            echo -n "$bucket: "
+            aws s3api get-bucket-versioning --bucket "$bucket" --query 'Status' --output text
+          done
+      azure:
+        commands:
+          - cmd: "az backup vault list"
+            description: "List Recovery Services vaults"
+            pass_criteria: "Recovery vaults support contingency"
+          - cmd: "az vm availability-set list"
+            description: "List availability sets"
+            pass_criteria: "VMs are in availability sets"
+      gcp:
+        commands:
+          - cmd: "gcloud compute snapshots list"
+            description: "List compute snapshots"
+            pass_criteria: "Snapshots support recovery"
+          - cmd: "gcloud sql instances describe INSTANCE --format='value(settings.backupConfiguration)'"
+            description: "Check Cloud SQL backup config"
+            pass_criteria: "SQL backup is configured"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get pv -o json | jq '.items[] | {name:.metadata.name,reclaimPolicy:.spec.persistentVolumeReclaimPolicy}'"
+            description: "Check PV reclaim policies"
+            pass_criteria: "Data retention supports recovery"
+
+  CP-2(1):
+    title: Coordinate with Related Plans
+    description: |
+      Coordinate contingency plan development with organizational elements responsible
+      for related plans.
+    baseline: [moderate, high]
+    parent: CP-2
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws organizations list-accounts"
+            description: "List organization accounts"
+            pass_criteria: "Multi-account structure supports coordination"
+      azure:
+        commands:
+          - cmd: "az account list"
+            description: "List subscriptions"
+            pass_criteria: "Subscriptions support coordination"
+
+  CP-2(3):
+    title: Resume Mission Functions
+    description: |
+      Plan for the resumption of mission functions within defined time frames.
+    baseline: [moderate, high]
+    parent: CP-2
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,MultiAZ:MultiAZ}'"
+            description: "Check Multi-AZ for quick recovery"
+            pass_criteria: "Multi-AZ enables quick resumption"
+          - cmd: "aws elasticloadbalancing describe-load-balancers"
+            description: "Check load balancers for failover"
+            pass_criteria: "Load balancers support failover"
+      azure:
+        commands:
+          - cmd: "az vm availability-set list"
+            description: "Check availability sets"
+            pass_criteria: "Availability supports quick resumption"
+      gcp:
+        commands:
+          - cmd: "gcloud compute instance-groups managed list"
+            description: "List managed instance groups"
+            pass_criteria: "MIGs support quick resumption"
+
+  CP-3:
+    title: Contingency Training
+    description: |
+      Provide contingency training to system users consistent with assigned roles
+      and responsibilities.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws iam list-users"
+            description: "List users for training verification"
+            pass_criteria: "Users have contingency training (verify externally)"
+      azure:
+        commands:
+          - cmd: "az ad user list"
+            description: "List users for training verification"
+            pass_criteria: "Users have contingency training (verify externally)"
+
+  CP-4:
+    title: Contingency Plan Testing
+    description: |
+      Test the contingency plan to determine its effectiveness and organizational readiness.
+      Review the contingency plan test results.
+      Initiate corrective actions if needed.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws fis list-experiments"
+            description: "List Fault Injection experiments"
+            pass_criteria: "FIS tests contingency capabilities"
+          - cmd: "aws backup list-backup-jobs --by-state COMPLETED"
+            description: "Check completed backup jobs"
+            pass_criteria: "Backups are successful"
+          - cmd: "aws rds describe-db-cluster-snapshots --query 'DBClusterSnapshots[?Status==`available`]'"
+            description: "Check RDS snapshot availability"
+            pass_criteria: "Snapshots are available for testing"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== CP-4 Contingency Plan Testing ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Fault Injection Experiments ==="
+          aws fis list-experiments --query 'experiments[*].{Id:id,State:state,CreationTime:creationTime}' --output table 2>/dev/null || echo "FIS not configured"
+          echo ""
+          echo "=== Recent Backup Jobs ==="
+          aws backup list-backup-jobs --by-state COMPLETED --max-results 10 --query 'BackupJobs[*].{ResourceType:ResourceType,Status:State,CompletionDate:CompletionDate}' --output table
+          echo ""
+          echo "=== RDS Snapshots ==="
+          aws rds describe-db-snapshots --query 'DBSnapshots[*].{Id:DBSnapshotIdentifier,Status:Status,Type:SnapshotType}' --output table | head -20
+      azure:
+        commands:
+          - cmd: "az chaos experiment list"
+            description: "List Chaos experiments"
+            pass_criteria: "Chaos testing validates contingency"
+          - cmd: "az backup job list --resource-group RG --vault-name VAULT --status Completed"
+            description: "Check completed backup jobs"
+            pass_criteria: "Backups are successful"
+      gcp:
+        commands:
+          - cmd: "gcloud compute snapshots list --sort-by=creationTimestamp"
+            description: "List recent snapshots"
+            pass_criteria: "Snapshots are current"
+
+  CP-4(1):
+    title: Coordinate with Related Plans
+    description: |
+      Coordinate contingency plan testing with organizational elements responsible for related plans.
+    baseline: [moderate, high]
+    parent: CP-4
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws organizations list-accounts"
+            description: "List organization accounts for coordination"
+            pass_criteria: "Testing coordinated across accounts"
+
+  CP-6:
+    title: Alternate Storage Site
+    description: |
+      Establish an alternate storage site that provides security controls equivalent
+      to the primary site.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws s3api get-bucket-replication --bucket BUCKET"
+            description: "Check S3 cross-region replication"
+            pass_criteria: "CRR configured for critical buckets"
+          - cmd: "aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,MultiAZ:MultiAZ,ReadReplicas:ReadReplicaDBInstanceIdentifiers}'"
+            description: "Check RDS replicas"
+            pass_criteria: "Read replicas in alternate regions"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== CP-6 Alternate Storage Site ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== S3 Cross-Region Replication ==="
+          for bucket in $(aws s3api list-buckets --query 'Buckets[*].Name' --output text); do
+            echo -n "$bucket: "
+            aws s3api get-bucket-replication --bucket "$bucket" 2>/dev/null && echo "CRR enabled" || echo "No CRR"
+          done
+          echo ""
+          echo "=== RDS Multi-AZ and Replicas ==="
+          aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,MultiAZ:MultiAZ,Replicas:ReadReplicaDBInstanceIdentifiers}' --output table
+      azure:
+        commands:
+          - cmd: "az storage account list --query '[].{Name:name,Replication:sku.name}'"
+            description: "Check storage replication type"
+            pass_criteria: "GRS or GZRS for alternate storage"
+          - cmd: "az site-recovery vault list"
+            description: "List Site Recovery vaults"
+            pass_criteria: "Site Recovery configured"
+      gcp:
+        commands:
+          - cmd: "gsutil rewrite -r gs://BUCKET"
+            description: "Check bucket replication"
+            pass_criteria: "Multi-region or dual-region storage"
+          - cmd: "gcloud sql instances describe INSTANCE --format='value(replicaConfiguration)'"
+            description: "Check SQL replication"
+            pass_criteria: "Replicas in alternate locations"
+
+  CP-7:
+    title: Alternate Processing Site
+    description: |
+      Establish an alternate processing site that provides security controls equivalent
+      to the primary site.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws ec2 describe-regions --query 'Regions[*].RegionName'"
+            description: "List available regions"
+            pass_criteria: "Multiple regions available"
+          - cmd: "aws autoscaling describe-auto-scaling-groups --query 'AutoScalingGroups[*].{Name:AutoScalingGroupName,AZs:AvailabilityZones}'"
+            description: "Check ASG availability zones"
+            pass_criteria: "ASGs span multiple AZs"
+          - cmd: "aws route53 list-health-checks"
+            description: "Check Route 53 health checks"
+            pass_criteria: "Health checks for failover routing"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== CP-7 Alternate Processing Site ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Multi-Region Resources ==="
+          for region in $(aws ec2 describe-regions --query 'Regions[*].RegionName' --output text); do
+            count=$(aws ec2 describe-instances --region $region --query 'length(Reservations[*].Instances[*])' --output text 2>/dev/null)
+            if [ "$count" != "0" ] && [ "$count" != "" ]; then
+              echo "$region: $count instances"
+            fi
+          done
+          echo ""
+          echo "=== Auto Scaling Groups ==="
+          aws autoscaling describe-auto-scaling-groups --query 'AutoScalingGroups[*].{Name:AutoScalingGroupName,MinSize:MinSize,AZs:AvailabilityZones}' --output table
+      azure:
+        commands:
+          - cmd: "az group list --query '[].{Name:name,Location:location}'"
+            description: "List resource groups by location"
+            pass_criteria: "Resources in multiple regions"
+          - cmd: "az traffic-manager profile list"
+            description: "List Traffic Manager profiles"
+            pass_criteria: "Traffic Manager for failover"
+      gcp:
+        commands:
+          - cmd: "gcloud compute regions list"
+            description: "List available regions"
+            pass_criteria: "Multiple regions available"
+          - cmd: "gcloud compute instance-groups managed list"
+            description: "List managed instance groups"
+            pass_criteria: "MIGs in multiple regions"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get nodes -o json | jq '.items[] | {name:.metadata.name,zone:.metadata.labels[\"topology.kubernetes.io/zone\"]}'"
+            description: "Check node zones"
+            pass_criteria: "Nodes span multiple zones"
+
+  CP-8:
+    title: Telecommunications Services
+    description: |
+      Establish alternate telecommunications services to support mission operations.
+    baseline: [moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws directconnect describe-connections"
+            description: "Check Direct Connect connections"
+            pass_criteria: "Multiple connections for redundancy"
+          - cmd: "aws ec2 describe-vpn-connections"
+            description: "Check VPN connections"
+            pass_criteria: "Backup VPN connections exist"
+      azure:
+        commands:
+          - cmd: "az network express-route circuit list"
+            description: "Check ExpressRoute circuits"
+            pass_criteria: "Multiple circuits for redundancy"
+          - cmd: "az network vpn-connection list"
+            description: "Check VPN connections"
+            pass_criteria: "Backup VPN connections exist"
+      gcp:
+        commands:
+          - cmd: "gcloud compute interconnects list"
+            description: "Check Cloud Interconnects"
+            pass_criteria: "Multiple interconnects for redundancy"
+          - cmd: "gcloud compute vpn-tunnels list"
+            description: "Check VPN tunnels"
+            pass_criteria: "Redundant VPN tunnels exist"
+
+  CP-9:
+    title: System Backup
+    description: |
+      Conduct backups of user-level, system-level, and security-related information.
+      Protect the confidentiality, integrity, and availability of backup information.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws backup list-backup-plans"
+            description: "List backup plans"
+            pass_criteria: "Backup plans cover critical data"
+          - cmd: "aws backup list-backup-vaults --query 'BackupVaultList[*].{Name:BackupVaultName,Encrypted:EncryptionKeyArn}'"
+            description: "Check backup vault encryption"
+            pass_criteria: "Backup vaults are encrypted"
+          - cmd: "aws rds describe-db-snapshots --query 'DBSnapshots[*].{Id:DBSnapshotIdentifier,Status:Status,Encrypted:Encrypted}'"
+            description: "Check RDS snapshots"
+            pass_criteria: "Snapshots are encrypted"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== CP-9 System Backup ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== Backup Plans ==="
+          aws backup list-backup-plans --query 'BackupPlansList[*].{Name:BackupPlanName,Id:BackupPlanId}' --output table
+          echo ""
+          echo "=== Backup Vaults ==="
+          aws backup list-backup-vaults --query 'BackupVaultList[*].{Name:BackupVaultName,RecoveryPoints:NumberOfRecoveryPoints}' --output table
+          echo ""
+          echo "=== Recent Recovery Points ==="
+          for vault in $(aws backup list-backup-vaults --query 'BackupVaultList[*].BackupVaultName' --output text); do
+            echo "Vault: $vault"
+            aws backup list-recovery-points-by-backup-vault --backup-vault-name "$vault" --max-results 5 --query 'RecoveryPoints[*].{Resource:ResourceArn,Status:Status,Created:CreationDate}' --output table
+          done
+      azure:
+        commands:
+          - cmd: "az backup vault list"
+            description: "List Recovery Services vaults"
+            pass_criteria: "Vaults protect backup data"
+          - cmd: "az backup item list --resource-group RG --vault-name VAULT"
+            description: "List backup items"
+            pass_criteria: "Critical items are backed up"
+      gcp:
+        commands:
+          - cmd: "gcloud compute snapshots list --format='table(name,status,diskSizeGb,creationTimestamp)'"
+            description: "List compute snapshots"
+            pass_criteria: "Snapshots protect system data"
+          - cmd: "gcloud sql backups list --instance=INSTANCE"
+            description: "List SQL backups"
+            pass_criteria: "Database backups exist"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get volumesnapshots -A"
+            description: "List volume snapshots"
+            pass_criteria: "PV snapshots protect data"
+
+  CP-9(1):
+    title: Testing for Reliability and Integrity
+    description: |
+      Test backup information to verify media reliability and information integrity.
+    baseline: [moderate, high]
+    parent: CP-9
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws backup list-restore-jobs --by-status COMPLETED"
+            description: "Check completed restore jobs"
+            pass_criteria: "Restore tests are successful"
+      azure:
+        commands:
+          - cmd: "az backup restore-point list --resource-group RG --vault-name VAULT --container-name CONTAINER --item-name ITEM"
+            description: "List restore points"
+            pass_criteria: "Restore points are valid"
+      gcp:
+        commands:
+          - cmd: "gcloud compute disks list --filter='sourceSnapshot:*'"
+            description: "List disks from snapshots"
+            pass_criteria: "Snapshot restores are tested"
+
+  CP-10:
+    title: System Recovery and Reconstitution
+    description: |
+      Provide for the recovery and reconstitution of the system to a known state
+      within defined time frames.
+    baseline: [low, moderate, high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE"
+            description: "List CloudFormation stacks"
+            pass_criteria: "IaC enables quick reconstitution"
+          - cmd: "aws elasticbeanstalk describe-environments"
+            description: "Check Elastic Beanstalk environments"
+            pass_criteria: "EB enables quick recovery"
+          - cmd: "aws autoscaling describe-auto-scaling-groups"
+            description: "Check Auto Scaling"
+            pass_criteria: "ASG enables recovery"
+        evidence_script: |
+          #!/bin/bash
+          echo "=== CP-10 System Recovery and Reconstitution ==="
+          echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+          echo "=== CloudFormation Stacks (IaC) ==="
+          aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE --query 'StackSummaries[*].{Name:StackName,Status:StackStatus}' --output table
+          echo ""
+          echo "=== Auto Scaling Groups ==="
+          aws autoscaling describe-auto-scaling-groups --query 'AutoScalingGroups[*].{Name:AutoScalingGroupName,Desired:DesiredCapacity,Min:MinSize,Max:MaxSize}' --output table
+          echo ""
+          echo "=== Launch Templates (Golden Images) ==="
+          aws ec2 describe-launch-templates --query 'LaunchTemplates[*].{Name:LaunchTemplateName,Version:LatestVersionNumber}' --output table
+      azure:
+        commands:
+          - cmd: "az deployment group list --resource-group RG"
+            description: "List ARM deployments"
+            pass_criteria: "IaC enables reconstitution"
+          - cmd: "az vmss list"
+            description: "Check VM scale sets"
+            pass_criteria: "VMSS enables recovery"
+      gcp:
+        commands:
+          - cmd: "gcloud deployment-manager deployments list"
+            description: "List Deployment Manager deployments"
+            pass_criteria: "IaC enables reconstitution"
+          - cmd: "gcloud compute instance-groups managed list"
+            description: "Check managed instance groups"
+            pass_criteria: "MIGs enable recovery"
+      kubernetes:
+        commands:
+          - cmd: "kubectl get deployments -A"
+            description: "List deployments"
+            pass_criteria: "Deployments enable recovery"
+          - cmd: "helm list -A"
+            description: "List Helm releases"
+            pass_criteria: "Helm enables reconstitution"
+
+  CP-10(2):
+    title: Transaction Recovery
+    description: |
+      Implement transaction recovery for transaction-based systems.
+    baseline: [moderate, high]
+    parent: CP-10
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws rds describe-db-instances --query 'DBInstances[*].{Id:DBInstanceIdentifier,Engine:Engine,MultiAZ:MultiAZ}'"
+            description: "Check RDS for transaction recovery"
+            pass_criteria: "RDS supports transaction recovery"
+          - cmd: "aws dynamodb describe-continuous-backups --table-name TABLE"
+            description: "Check DynamoDB point-in-time recovery"
+            pass_criteria: "PITR enabled for transaction recovery"
+      azure:
+        commands:
+          - cmd: "az sql db show --resource-group RG --server SERVER --name DB --query 'earliestRestoreDate'"
+            description: "Check SQL restore capability"
+            pass_criteria: "Point-in-time restore available"
+      gcp:
+        commands:
+          - cmd: "gcloud sql instances describe INSTANCE --format='value(settings.backupConfiguration.pointInTimeRecoveryEnabled)'"
+            description: "Check Cloud SQL PITR"
+            pass_criteria: "PITR enabled for transaction recovery"
+
+  CP-11:
+    title: Alternate Communications Protocols
+    description: |
+      Provide the capability to employ alternate communications protocols
+      in support of maintaining continuity of operations.
+    baseline: [high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws apigateway get-rest-apis"
+            description: "List API Gateway endpoints"
+            pass_criteria: "Multiple API endpoints available"
+          - cmd: "aws elbv2 describe-load-balancers"
+            description: "Check load balancers"
+            pass_criteria: "Load balancers provide protocol flexibility"
+      azure:
+        commands:
+          - cmd: "az network application-gateway list"
+            description: "List Application Gateways"
+            pass_criteria: "App Gateways support multiple protocols"
+      gcp:
+        commands:
+          - cmd: "gcloud compute forwarding-rules list"
+            description: "List forwarding rules"
+            pass_criteria: "Multiple protocols supported"
+
+  CP-12:
+    title: Safe Mode
+    description: |
+      When defined conditions are detected, the system enters a safe mode of operation
+      with defined restrictions.
+    baseline: [high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws lambda list-functions --query 'Functions[*].{Name:FunctionName,ReservedConcurrency:ReservedConcurrentExecutions}'"
+            description: "Check Lambda concurrency limits"
+            pass_criteria: "Concurrency limits provide safe mode"
+          - cmd: "aws wafv2 list-web-acls --scope REGIONAL"
+            description: "Check WAF for rate limiting"
+            pass_criteria: "WAF can limit traffic in safe mode"
+      azure:
+        commands:
+          - cmd: "az network application-gateway waf-policy list"
+            description: "Check WAF policies"
+            pass_criteria: "WAF can enforce safe mode"
+      gcp:
+        commands:
+          - cmd: "gcloud compute security-policies list"
+            description: "Check Cloud Armor policies"
+            pass_criteria: "Cloud Armor can enforce safe mode"
+
+  CP-13:
+    title: Alternative Security Mechanisms
+    description: |
+      Employ alternative or supplemental security mechanisms for security functions.
+    baseline: [high]
+    cloud_tests:
+      aws:
+        commands:
+          - cmd: "aws kms list-keys"
+            description: "List KMS keys (encryption alternatives)"
+            pass_criteria: "Multiple encryption options"
+          - cmd: "aws secretsmanager list-secrets"
+            description: "Check Secrets Manager"
+            pass_criteria: "Alternative credential storage"
+      azure:
+        commands:
+          - cmd: "az keyvault list"
+            description: "List Key Vaults"
+            pass_criteria: "Multiple key management options"
+      gcp:
+        commands:
+          - cmd: "gcloud kms keyrings list --location=global"
+            description: "List KMS key rings"
+            pass_criteria: "Multiple encryption options"

@@ -1,0 +1,628 @@
+name: GCP
+description: Google Cloud Platform evidence collection templates
+
+templates:
+  two_step_verification:
+    name: 2-Step Verification
+    control: 2-Step verification enforced for all users
+    keywords:
+      - mfa
+      - 2sv
+      - two-step
+      - two-factor
+    formats:
+      python: |
+        #!/usr/bin/env python3
+        """
+        Evidence Collection Script
+        Control: 2-Step verification enforced for all users
+        Provider: GCP
+        Generated: {timestamp}
+        """
+
+        import json
+        from datetime import datetime
+        from google.oauth2 import service_account
+        from googleapiclient.discovery import build
+
+        def collect_2sv_evidence():
+            evidence = {
+                "control": "2-Step verification enforced for all users",
+                "timestamp": datetime.utcnow().isoformat(),
+                "provider": "GCP",
+                "results": []
+            }
+
+            try:
+                # Requires Domain-Wide Delegation and Admin SDK access
+                credentials = service_account.Credentials.from_service_account_file(
+                    'service-account.json',
+                    scopes=['https://www.googleapis.com/auth/admin.directory.user.readonly']
+                )
+
+                service = build('admin', 'directory_v1', credentials=credentials)
+
+                # List all users
+                results = service.users().list(
+                    customer='my_customer',
+                    maxResults=500,
+                    orderBy='email'
+                ).execute()
+
+                users = results.get('users', [])
+
+                for user in users:
+                    evidence["results"].append({
+                        "email": user.get('primaryEmail'),
+                        "name": user.get('name', {}).get('fullName'),
+                        "is_enrolled_in_2sv": user.get('isEnrolledIn2Sv', False),
+                        "is_enforced_in_2sv": user.get('isEnforcedIn2Sv', False),
+                        "status": "PASS" if user.get('isEnrolledIn2Sv') else "FAIL"
+                    })
+
+            except Exception as e:
+                evidence["error"] = str(e)
+                evidence["status"] = "ERROR"
+                evidence["note"] = "Requires Google Workspace Admin SDK and Domain-Wide Delegation"
+
+            return evidence
+
+        if __name__ == "__main__":
+            result = collect_2sv_evidence()
+            print(json.dumps(result, indent=2))
+      bash: |
+        #!/bin/bash
+        # Evidence Collection Script
+        # Control: 2-Step verification enforced for all users
+        # Provider: GCP
+        # Generated: {timestamp}
+
+        set -e
+
+        echo "=== GCP 2-Step Verification Evidence ==="
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        echo "--- Organization IAM Policy ---"
+        ORG_ID=$(gcloud organizations list --format="value(ID)" | head -1)
+        if [ -n "$ORG_ID" ]; then
+            echo "Organization ID: $ORG_ID"
+            gcloud organizations get-iam-policy "$ORG_ID" --format=yaml
+        else
+            echo "No organization access or not configured"
+        fi
+
+        echo ""
+        echo "--- IAM Service Accounts ---"
+        gcloud iam service-accounts list --format="table(email,displayName,disabled)"
+
+        echo ""
+        echo "--- Service Account Keys (check for user-managed keys) ---"
+        for sa in $(gcloud iam service-accounts list --format="value(email)"); do
+            echo "Service Account: $sa"
+            gcloud iam service-accounts keys list --iam-account="$sa" --format="table(name.basename(),keyType,validAfterTime,validBeforeTime)"
+        done
+
+        echo ""
+        echo "Note: Full 2SV status requires Google Workspace Admin SDK access"
+        echo "Use: gam print users is2svenrolled is2svenforced"
+    instructions: |
+      ## GCP CLI Prerequisites
+
+      1. **Install Google Cloud SDK:**
+         ```bash
+         # macOS
+         brew install google-cloud-sdk
+
+         # Linux
+         curl https://sdk.cloud.google.com | bash
+         ```
+
+      2. **Authenticate:**
+         ```bash
+         gcloud auth login
+         gcloud config set project PROJECT_ID
+         ```
+
+      3. **For 2SV user status:**
+         Requires Google Workspace Admin SDK access with domain-wide delegation.
+         Consider using GAM (https://github.com/GAM-team/GAM) for full user 2SV reporting.
+
+  storage_encryption:
+    name: Cloud Storage Encryption
+    control: Cloud Storage buckets encrypted with CMEK
+    keywords:
+      - storage
+      - bucket
+      - encrypt
+      - gcs
+      - cmek
+    formats:
+      python: |
+        #!/usr/bin/env python3
+        """
+        Evidence Collection Script
+        Control: Cloud Storage buckets encrypted with CMEK
+        Provider: GCP
+        Generated: {timestamp}
+        """
+
+        import json
+        from datetime import datetime
+        from google.cloud import storage
+
+        def collect_storage_encryption_evidence():
+            evidence = {
+                "control": "Cloud Storage buckets encrypted with CMEK",
+                "timestamp": datetime.utcnow().isoformat(),
+                "provider": "GCP",
+                "results": [],
+                "summary": {"total": 0, "google_managed": 0, "customer_managed": 0}
+            }
+
+            try:
+                client = storage.Client()
+
+                for bucket in client.list_buckets():
+                    evidence["summary"]["total"] += 1
+
+                    default_kms_key = bucket.default_kms_key_name
+
+                    if default_kms_key:
+                        evidence["summary"]["customer_managed"] += 1
+                        encryption_type = "CMEK"
+                    else:
+                        evidence["summary"]["google_managed"] += 1
+                        encryption_type = "Google-managed"
+
+                    evidence["results"].append({
+                        "bucket_name": bucket.name,
+                        "location": bucket.location,
+                        "storage_class": bucket.storage_class,
+                        "encryption_type": encryption_type,
+                        "kms_key": default_kms_key or "Google-managed encryption",
+                        "uniform_bucket_level_access": bucket.iam_configuration.uniform_bucket_level_access_enabled,
+                        "public_access_prevention": bucket.iam_configuration.public_access_prevention,
+                        "status": "PASS"
+                    })
+
+            except Exception as e:
+                evidence["error"] = str(e)
+                evidence["status"] = "ERROR"
+
+            return evidence
+
+        if __name__ == "__main__":
+            result = collect_storage_encryption_evidence()
+            print(json.dumps(result, indent=2))
+      bash: |
+        #!/bin/bash
+        # Evidence Collection Script
+        # Control: Cloud Storage buckets encrypted with CMEK
+        # Provider: GCP
+        # Generated: {timestamp}
+
+        set -e
+
+        echo "=== GCP Storage Encryption Evidence ==="
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        echo "--- All Cloud Storage Buckets ---"
+        gcloud storage buckets list --format="table(name,location,storageClass,defaultKmsKeyName)"
+
+        echo ""
+        echo "--- Buckets with CMEK Encryption ---"
+        gcloud storage buckets list --format="table(name,defaultKmsKeyName)" --filter="defaultKmsKeyName:*"
+
+        echo ""
+        echo "--- Buckets with Google-Managed Encryption (no CMEK) ---"
+        gcloud storage buckets list --format="table(name,location)" --filter="-defaultKmsKeyName:*"
+
+        echo ""
+        echo "--- Bucket IAM and Public Access Settings ---"
+        for bucket in $(gcloud storage buckets list --format="value(name)"); do
+            echo "Bucket: $bucket"
+            gcloud storage buckets describe "gs://$bucket" --format="yaml(iamConfiguration)"
+            echo "---"
+        done
+    instructions: |
+      ## Required GCP Permissions
+      - storage.buckets.list
+      - storage.buckets.get
+      - storage.buckets.getIamPolicy
+
+  audit_logging:
+    name: Cloud Audit Logs
+    control: Audit logging enabled for all services
+    keywords:
+      - audit
+      - logging
+      - cloudaudit
+      - admin activity
+    formats:
+      python: |
+        #!/usr/bin/env python3
+        """
+        Evidence Collection Script
+        Control: Audit logging enabled for all services
+        Provider: GCP
+        Generated: {timestamp}
+        """
+
+        import json
+        from datetime import datetime
+        from google.cloud import resourcemanager_v3
+        from google.iam.v1 import iam_policy_pb2
+
+        def collect_audit_log_evidence():
+            evidence = {
+                "control": "Audit logging enabled for all services",
+                "timestamp": datetime.utcnow().isoformat(),
+                "provider": "GCP",
+                "results": []
+            }
+
+            try:
+                # Get project IAM policy with audit configs
+                client = resourcemanager_v3.ProjectsClient()
+
+                # List all projects
+                for project in client.search_projects():
+                    policy = client.get_iam_policy(resource=project.name)
+
+                    audit_configs = []
+                    for config in policy.audit_configs:
+                        audit_configs.append({
+                            "service": config.service,
+                            "log_types": [
+                                {"log_type": log.log_type.name, "exempted_members": list(log.exempted_members)}
+                                for log in config.audit_log_configs
+                            ]
+                        })
+
+                    evidence["results"].append({
+                        "project_id": project.project_id,
+                        "project_name": project.display_name,
+                        "audit_configs_count": len(audit_configs),
+                        "audit_configs": audit_configs,
+                        "status": "PASS" if audit_configs else "WARN"
+                    })
+
+            except Exception as e:
+                evidence["error"] = str(e)
+                evidence["status"] = "ERROR"
+
+            return evidence
+
+        if __name__ == "__main__":
+            result = collect_audit_log_evidence()
+            print(json.dumps(result, indent=2))
+      bash: |
+        #!/bin/bash
+        # Evidence Collection Script
+        # Control: Audit logging enabled for all services
+        # Provider: GCP
+        # Generated: {timestamp}
+
+        set -e
+
+        echo "=== GCP Audit Logging Evidence ==="
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        PROJECT_ID=$(gcloud config get-value project)
+        echo "Project: $PROJECT_ID"
+        echo ""
+
+        echo "--- Project IAM Policy with Audit Configs ---"
+        gcloud projects get-iam-policy "$PROJECT_ID" --format=yaml | grep -A 100 "auditConfigs:" || echo "No audit configs found in IAM policy"
+
+        echo ""
+        echo "--- Log Sinks (Export Destinations) ---"
+        gcloud logging sinks list --format="table(name,destination,filter)"
+
+        echo ""
+        echo "--- Log-Based Metrics ---"
+        gcloud logging metrics list --format="table(name,filter)"
+
+        echo ""
+        echo "--- Recent Admin Activity Logs (last 1 hour) ---"
+        gcloud logging read 'logName:"cloudaudit.googleapis.com%2Factivity"' --limit=10 --format="table(timestamp,protoPayload.methodName,protoPayload.authenticationInfo.principalEmail)"
+
+        echo ""
+        echo "--- Organization-Level Audit Config (if accessible) ---"
+        ORG_ID=$(gcloud organizations list --format="value(ID)" | head -1)
+        if [ -n "$ORG_ID" ]; then
+            gcloud organizations get-iam-policy "$ORG_ID" --format=yaml | grep -A 100 "auditConfigs:" || echo "No org-level audit configs"
+        fi
+    instructions: |
+      ## Required GCP Permissions
+      - resourcemanager.projects.getIamPolicy
+      - logging.sinks.list
+      - logging.logEntries.list
+
+  kms_keys:
+    name: Cloud KMS Keys
+    control: KMS keys properly configured and rotated
+    keywords:
+      - kms
+      - key
+      - encryption key
+      - cryptokey
+    formats:
+      python: |
+        #!/usr/bin/env python3
+        """
+        Evidence Collection Script
+        Control: KMS keys properly configured and rotated
+        Provider: GCP
+        Generated: {timestamp}
+        """
+
+        import json
+        from datetime import datetime
+        from google.cloud import kms
+
+        def collect_kms_evidence():
+            evidence = {
+                "control": "KMS keys properly configured and rotated",
+                "timestamp": datetime.utcnow().isoformat(),
+                "provider": "GCP",
+                "results": []
+            }
+
+            try:
+                client = kms.KeyManagementServiceClient()
+                project_id = "YOUR_PROJECT_ID"  # Replace or get from environment
+
+                # List all key rings in all locations
+                locations = ['global', 'us', 'us-east1', 'us-west1', 'europe', 'asia']
+
+                for location in locations:
+                    parent = f"projects/{project_id}/locations/{location}"
+
+                    try:
+                        for key_ring in client.list_key_rings(request={"parent": parent}):
+                            for crypto_key in client.list_crypto_keys(request={"parent": key_ring.name}):
+                                rotation_period = crypto_key.rotation_period.seconds if crypto_key.rotation_period else None
+                                rotation_days = rotation_period / 86400 if rotation_period else None
+
+                                evidence["results"].append({
+                                    "key_ring": key_ring.name.split('/')[-1],
+                                    "key_name": crypto_key.name.split('/')[-1],
+                                    "location": location,
+                                    "purpose": crypto_key.purpose.name,
+                                    "rotation_period_days": rotation_days,
+                                    "next_rotation_time": str(crypto_key.next_rotation_time) if crypto_key.next_rotation_time else None,
+                                    "primary_state": crypto_key.primary.state.name if crypto_key.primary else None,
+                                    "status": "PASS" if rotation_days and rotation_days <= 365 else "WARN"
+                                })
+                    except Exception:
+                        pass  # Location may not have key rings
+
+            except Exception as e:
+                evidence["error"] = str(e)
+                evidence["status"] = "ERROR"
+
+            return evidence
+
+        if __name__ == "__main__":
+            result = collect_kms_evidence()
+            print(json.dumps(result, indent=2))
+      bash: |
+        #!/bin/bash
+        # Evidence Collection Script
+        # Control: KMS keys properly configured and rotated
+        # Provider: GCP
+        # Generated: {timestamp}
+
+        set -e
+
+        echo "=== GCP KMS Evidence Collection ==="
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        PROJECT_ID=$(gcloud config get-value project)
+        echo "Project: $PROJECT_ID"
+        echo ""
+
+        echo "--- All Key Rings ---"
+        gcloud kms keyrings list --location=global --format="table(name)" 2>/dev/null || echo "No global key rings"
+        gcloud kms keyrings list --location=us --format="table(name)" 2>/dev/null || echo "No US key rings"
+        gcloud kms keyrings list --location=us-east1 --format="table(name)" 2>/dev/null || echo "No us-east1 key rings"
+
+        echo ""
+        echo "--- Crypto Keys with Rotation Settings ---"
+        for location in global us us-east1 us-west1 europe-west1; do
+            for keyring in $(gcloud kms keyrings list --location="$location" --format="value(name)" 2>/dev/null); do
+                echo "Key Ring: $keyring"
+                gcloud kms keys list --keyring="$keyring" --location="$location" --format="table(name.basename(),purpose,rotationPeriod,nextRotationTime)" 2>/dev/null
+            done
+        done
+
+        echo ""
+        echo "--- Keys Without Rotation Configured ---"
+        for location in global us us-east1; do
+            for keyring in $(gcloud kms keyrings list --location="$location" --format="value(name)" 2>/dev/null); do
+                gcloud kms keys list --keyring="$keyring" --location="$location" --filter="-rotationPeriod:*" --format="table(name.basename(),purpose)" 2>/dev/null
+            done
+        done
+    instructions: |
+      ## Required GCP Permissions
+      - cloudkms.keyRings.list
+      - cloudkms.cryptoKeys.list
+      - cloudkms.cryptoKeys.get
+
+  iam_service_accounts:
+    name: Service Account Security
+    control: Service accounts follow least privilege
+    keywords:
+      - service account
+      - iam
+      - least privilege
+    formats:
+      python: |
+        #!/usr/bin/env python3
+        """
+        Evidence Collection Script
+        Control: Service accounts follow least privilege
+        Provider: GCP
+        Generated: {timestamp}
+        """
+
+        import json
+        from datetime import datetime
+        from google.cloud import iam_admin_v1
+        from google.cloud import resourcemanager_v3
+
+        def collect_service_account_evidence():
+            evidence = {
+                "control": "Service accounts follow least privilege",
+                "timestamp": datetime.utcnow().isoformat(),
+                "provider": "GCP",
+                "results": [],
+                "findings": []
+            }
+
+            try:
+                iam_client = iam_admin_v1.IAMClient()
+                rm_client = resourcemanager_v3.ProjectsClient()
+
+                # Get project
+                for project in rm_client.search_projects():
+                    # List service accounts
+                    request = iam_admin_v1.ListServiceAccountsRequest(
+                        name=f"projects/{project.project_id}"
+                    )
+
+                    for sa in iam_client.list_service_accounts(request=request):
+                        # Check for user-managed keys
+                        keys_request = iam_admin_v1.ListServiceAccountKeysRequest(
+                            name=sa.name,
+                            key_types=[iam_admin_v1.ListServiceAccountKeysRequest.KeyType.USER_MANAGED]
+                        )
+                        keys = list(iam_client.list_service_account_keys(request=keys_request))
+
+                        sa_info = {
+                            "email": sa.email,
+                            "display_name": sa.display_name,
+                            "disabled": sa.disabled,
+                            "user_managed_keys": len(keys),
+                            "status": "WARN" if len(keys) > 0 else "PASS"
+                        }
+
+                        if len(keys) > 0:
+                            evidence["findings"].append({
+                                "service_account": sa.email,
+                                "finding": f"Has {len(keys)} user-managed key(s)",
+                                "recommendation": "Prefer workload identity or impersonation over user-managed keys"
+                            })
+
+                        evidence["results"].append(sa_info)
+
+            except Exception as e:
+                evidence["error"] = str(e)
+                evidence["status"] = "ERROR"
+
+            return evidence
+
+        if __name__ == "__main__":
+            result = collect_service_account_evidence()
+            print(json.dumps(result, indent=2))
+      bash: |
+        #!/bin/bash
+        # Evidence Collection Script
+        # Control: Service accounts follow least privilege
+        # Provider: GCP
+        # Generated: {timestamp}
+
+        set -e
+
+        echo "=== GCP Service Account Evidence ==="
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        PROJECT_ID=$(gcloud config get-value project)
+        echo "Project: $PROJECT_ID"
+        echo ""
+
+        echo "--- All Service Accounts ---"
+        gcloud iam service-accounts list --format="table(email,displayName,disabled)"
+
+        echo ""
+        echo "--- Service Accounts with User-Managed Keys ---"
+        for sa in $(gcloud iam service-accounts list --format="value(email)"); do
+            key_count=$(gcloud iam service-accounts keys list --iam-account="$sa" --filter="keyType=USER_MANAGED" --format="value(name)" | wc -l)
+            if [ "$key_count" -gt 0 ]; then
+                echo "$sa: $key_count user-managed key(s)"
+                gcloud iam service-accounts keys list --iam-account="$sa" --filter="keyType=USER_MANAGED" --format="table(name.basename(),validAfterTime,validBeforeTime)"
+            fi
+        done
+
+        echo ""
+        echo "--- IAM Bindings with Service Accounts ---"
+        gcloud projects get-iam-policy "$PROJECT_ID" --format=yaml | grep -B2 "serviceAccount:" || echo "No service account bindings found"
+
+        echo ""
+        echo "--- Service Accounts with Owner/Editor Roles (Overprivileged) ---"
+        gcloud projects get-iam-policy "$PROJECT_ID" --flatten="bindings[].members" --filter="bindings.members:serviceAccount AND (bindings.role:roles/owner OR bindings.role:roles/editor)" --format="table(bindings.members,bindings.role)"
+    instructions: |
+      ## Required GCP Permissions
+      - iam.serviceAccounts.list
+      - iam.serviceAccountKeys.list
+      - resourcemanager.projects.getIamPolicy
+
+  default:
+    name: Generic GCP Evidence
+    control: "{control}"
+    formats:
+      python: |
+        #!/usr/bin/env python3
+        """
+        Evidence Collection Script
+        Control: {control}
+        Provider: GCP
+        Generated: {timestamp}
+        """
+
+        import json
+        from datetime import datetime
+
+        def collect_evidence():
+            evidence = {
+                "control": "{control}",
+                "timestamp": datetime.utcnow().isoformat(),
+                "provider": "GCP",
+                "results": []
+            }
+
+            # Add your evidence collection logic here
+
+            return evidence
+
+        if __name__ == "__main__":
+            result = collect_evidence()
+            print(json.dumps(result, indent=2))
+      bash: |
+        #!/bin/bash
+        # Evidence Collection Script
+        # Control: {control}
+        # Provider: GCP
+        # Generated: {timestamp}
+
+        echo "=== GCP Evidence Collection ==="
+        echo "Control: {control}"
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+        PROJECT_ID=$(gcloud config get-value project)
+        echo "Project: $PROJECT_ID"
+
+        # Add your gcloud commands here
+    instructions: |
+      ## GCP CLI Setup
+
+      ```bash
+      gcloud auth login
+      gcloud config set project PROJECT_ID
+      ```

@@ -1,0 +1,32 @@
+name: Contract test
+
+on:
+  pull_request:
+    paths:
+      - 'schemas/**'
+      - 'tests/fixtures/**'
+      - 'plugins/connectors/**'
+      - '.github/workflows/contract-test.yml'
+  push:
+    branches: [main]
+
+concurrency:
+  group: contract-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-fixtures:
+    name: Validate contract fixtures against every schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install ajv-cli + formats
+        run: npm install --no-save ajv-cli@5 ajv-formats@3
+
+      - name: Validate contract fixtures
+        run: bash tests/validate-contract-fixtures.sh
