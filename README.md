@@ -4,6 +4,10 @@ AI AWS GRC Platform is an AWS-focused cloud governance and compliance project th
 
 This project explores how AWS security findings can be automated and analyzed using serverless workflows and Amazon Bedrock.
 
+## Dashboard Preview
+
+![Dashboard Preview](Dashboard%20Preview.png)
+
 ## Current Focus
 
 The current implementation focuses on:
