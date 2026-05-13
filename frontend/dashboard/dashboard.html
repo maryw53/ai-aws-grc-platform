@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI AWS GRC Platform — Dashboard</title>
+<style>
+  :root {
+    --bg:        #0d1117;
+    --panel:    #161b22;
+    --panel-2:  #1c222b;
+    --border:   #30363d;
+    --border-soft: #21262d;
+    --text:     #e6edf3;
+    --muted:    #8b949e;
+    --dim:      #6e7681;
+    --accent:   #ff9900;   /* AWS orange */
+    --accent-soft: rgba(255, 153, 0, 0.12);
+    --crit:     #f85149;
+    --high:     #fb8500;
+    --med:      #d29922;
+    --low:      #58a6ff;
+    --ok:       #3fb950;
+    --shadow:   0 1px 0 rgba(255,255,255,0.04) inset, 0 1px 2px rgba(0,0,0,0.4);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+
+  /* ---------- Layout ---------- */
+  .app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+
+  .sidebar {
+    background: #0a0e14;
+    border-right: 1px solid var(--border-soft);
+    padding: 20px 14px;
+    position: sticky; top: 0; height: 100vh;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 22px; }
+  .brand-mark {
+    width: 28px; height: 28px; border-radius: 6px;
+    background: linear-gradient(135deg, var(--accent), #cc6600);
+    display: grid; place-items: center; color: #1a1006; font-weight: 700; font-size: 13px;
+    box-shadow: 0 0 0 1px rgba(255,153,0,0.3), 0 4px 12px rgba(255,153,0,0.15);
+  }
+  .brand-text { font-size: 13px; font-weight: 600; letter-spacing: 0.2px; line-height: 1.2; }
+  .brand-text small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; margin-top: 2px; }
+
+  .nav-section { margin-top: 14px; }
+  .nav-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); padding: 0 8px 6px; }
+  .nav a {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 8px; margin: 1px 0;
+    color: var(--muted); text-decoration: none;
+    font-size: 13px; border-radius: 6px;
+  }
+  .nav a:hover { background: var(--panel-2); color: var(--text); }
+  .nav a.active { background: var(--accent-soft); color: var(--accent); }
+  .nav a svg { width: 14px; height: 14px; opacity: 0.85; }
+
+  /* ---------- Main ---------- */
+  .main { padding: 20px 28px 40px; max-width: 1400px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 6px 0 20px; }
+  .crumbs { font-size: 13px; color: var(--muted); }
+  .crumbs span { color: var(--text); }
+  .env-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--panel); border: 1px solid var(--border-soft);
+    padding: 4px 10px; border-radius: 999px; font-size: 12px; color: var(--muted);
+    font-family: var(--mono);
+  }
+  .env-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .subhead { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
+
+  /* ---------- KPI Cards ---------- */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+  .kpi {
+    background: var(--panel); border: 1px solid var(--border-soft);
+    border-radius: 8px; padding: 16px 18px; box-shadow: var(--shadow);
+    position: relative; overflow: hidden;
+  }
+  .kpi-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; color: var(--muted); margin-bottom: 12px;
+  }
+  .kpi-icon {
+    width: 28px; height: 28px; border-radius: 6px;
+    display: grid; place-items: center;
+    background: var(--panel-2); border: 1px solid var(--border-soft);
+  }
+  .kpi-icon svg { width: 14px; height: 14px; }
+  .kpi-value { font-family: var(--mono); font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+  .kpi-meta { font-size: 12px; color: var(--muted); margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+  .delta { font-family: var(--mono); font-weight: 500; }
+  .delta.up   { color: var(--crit); }
+  .delta.down { color: var(--ok); }
+  .delta.flat { color: var(--muted); }
+
+  .kpi.compliance .bar {
+    height: 6px; background: var(--panel-2); border-radius: 999px; margin-top: 12px; overflow: hidden;
+  }
+  .kpi.compliance .bar-fill {
+    height: 100%; width: 87%;
+    background: linear-gradient(90deg, var(--ok), #2ea043);
+    border-radius: 999px;
+  }
+
+  /* ---------- Grid below ---------- */
+  .grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; margin-bottom: 18px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border-soft);
+    border-radius: 8px; box-shadow: var(--shadow);
+  }
+  .card-head {
+    padding: 14px 18px; border-bottom: 1px solid var(--border-soft);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .card-title { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
+  .card-title .badge {
+    display: inline-block; margin-left: 8px;
+    font-family: var(--mono); font-size: 10px; padding: 2px 6px;
+    background: var(--accent-soft); color: var(--accent); border-radius: 4px; font-weight: 500;
+  }
+  .card-action { font-size: 12px; color: var(--muted); cursor: pointer; }
+  .card-action:hover { color: var(--text); }
+  .card-body { padding: 16px 18px; }
+
+  /* ---------- AI Risk Summary ---------- */
+  .ai-card { position: relative; overflow: hidden; }
+  .ai-card::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(600px 200px at 90% -20%, rgba(255,153,0,0.10), transparent 60%);
+    pointer-events: none;
+  }
+  .ai-meta {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: 12px;
+  }
+  .ai-meta .tag {
+    background: var(--panel-2); border: 1px solid var(--border-soft);
+    padding: 2px 7px; border-radius: 4px;
+  }
+  .ai-summary { font-size: 13.5px; line-height: 1.6; color: var(--text); }
+  .ai-summary p { margin: 0 0 10px; }
+  .ai-summary strong { color: var(--accent); font-weight: 600; }
+  .ai-footer {
+    display: flex; gap: 10px; align-items: center; justify-content: space-between;
+    margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border-soft);
+    font-size: 11.5px; color: var(--muted); font-family: var(--mono);
+  }
+
+  /* ---------- Findings Table ---------- */
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left; font-size: 10.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim);
+    padding: 10px 18px; border-bottom: 1px solid var(--border-soft);
+    background: rgba(255,255,255,0.01);
+  }
+  tbody td {
+    padding: 12px 18px; font-size: 13px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--panel-2); }
+
+  .sev {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    padding: 2px 8px; border-radius: 4px;
+  }
+  .sev::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+  .sev.crit { background: rgba(248,81,73,0.12);  color: var(--crit); }
+  .sev.crit::before { background: var(--crit); }
+  .sev.high { background: rgba(251,133,0,0.12);  color: var(--high); }
+  .sev.high::before { background: var(--high); }
+  .sev.med  { background: rgba(210,153,34,0.12); color: var(--med); }
+  .sev.med::before  { background: var(--med); }
+  .sev.low  { background: rgba(88,166,255,0.12); color: var(--low); }
+  .sev.low::before  { background: var(--low); }
+
+  .resource { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .when { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+
+  /* ---------- Integrations ---------- */
+  .integrations { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .integration {
+    background: var(--panel); border: 1px solid var(--border-soft);
+    border-radius: 8px; padding: 16px 18px; position: relative;
+  }
+  .integration-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .integration-logo {
+    width: 36px; height: 36px; border-radius: 7px;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), #b35900);
+    color: #1a1006; font-weight: 700; font-size: 14px;
+  }
+  .integration-logo.macie     { background: linear-gradient(135deg, #4d72f5, #2547c4); color: #fff; }
+  .integration-logo.inspector { background: linear-gradient(135deg, #36c2b4, #1f8a82); color: #fff; }
+  .integration-logo.hub       { background: linear-gradient(135deg, var(--accent), #b35900); }
+  .integration h3 { margin: 0; font-size: 13.5px; font-weight: 600; }
+  .integration .svc { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .integration p { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin: 0 0 12px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+    padding: 3px 8px; border-radius: 999px;
+  }
+  .pill.connected { background: rgba(63,185,80,0.12); color: var(--ok); }
+  .pill.planned   { background: rgba(139,148,158,0.12); color: var(--muted); }
+  .pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; }
+  .pill.connected::before { background: var(--ok); }
+  .pill.planned::before   { background: var(--muted); }
+
+  @media (max-width: 980px) {
+    .app { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .grid { grid-template-columns: 1fr; }
+    .integrations { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">G</div>
+      <div class="brand-text">
+        AI AWS GRC
+        <small>Platform</small>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Workspace</div>
+      <nav class="nav">
+        <a href="#" class="active">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M1 2h6v6H1zM9 2h6v3H9zM9 7h6v7H9zM1 10h6v4H1z"/></svg>
+          Dashboard
+        </a>
+        <a href="#">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
+          Findings
+        </a>
+        <a href="#">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v3H2zM2 8h12v3H2zM2 13h8"/></svg>
+          Compliance
+        </a>
+        <a href="#">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 13V7M8 13V3M13 13v-4"/></svg>
+          Reports
+        </a>
+      </nav>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Configure</div>
+      <nav class="nav">
+        <a href="#">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5L13 13M3 13l1.5-1.5M11.5 4.5L13 3"/></svg>
+          Integrations
+        </a>
+        <a href="#">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1l6 3v4c0 4-3 6-6 7-3-1-6-3-6-7V4z"/></svg>
+          Policies
+        </a>
+        <a href="#">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>
+          Access
+        </a>
+      </nav>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+
+    <div class="topbar">
+      <div class="crumbs">Workspace / <span>Dashboard</span></div>
+      <div class="env-chip"><span class="env-dot"></span> demo · us-west-2 · sample data</div>
+    </div>
+
+    <h1>Governance Dashboard</h1>
+    <div class="subhead">Demo view of sample security findings, compliance posture, and AI-generated risk insights across your AWS environment.</div>
+
+    <!-- KPIs -->
+    <section class="kpis">
+      <div class="kpi">
+        <div class="kpi-head">
+          Total Findings (30d)
+          <div class="kpi-icon" style="color: var(--accent)">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13h12M4 13V8M7 13V5M10 13V9M13 13V3"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value">1,247</div>
+        <div class="kpi-meta">
+          <span class="delta up">↑ 8.4%</span> vs. previous 30 days
+        </div>
+      </div>
+
+      <div class="kpi">
+        <div class="kpi-head">
+          High &amp; Critical Severity
+          <div class="kpi-icon" style="color: var(--crit)">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2l6 11H2z"/><path d="M8 6v4M8 11.5v0.5"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" style="color: var(--crit)">38</div>
+        <div class="kpi-meta">
+          <span class="delta down">↓ 12.1%</span> — 7 critical, 31 high
+        </div>
+      </div>
+
+      <div class="kpi compliance">
+        <div class="kpi-head">
+          Compliance Score
+          <div class="kpi-icon" style="color: var(--ok)">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8l3 3 7-7"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value">87<span style="font-size:18px;color:var(--muted)">%</span></div>
+        <div class="bar"><div class="bar-fill"></div></div>
+        <div class="kpi-meta">CIS AWS · NIST 800-53 · PCI-DSS</div>
+      </div>
+
+      <div class="kpi">
+        <div class="kpi-head">
+          Resources Scanned
+          <div class="kpi-icon" style="color: var(--low)">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="4" rx="1"/><rect x="2" y="9" width="12" height="4" rx="1"/><circle cx="5" cy="5" r="0.5" fill="currentColor"/><circle cx="5" cy="11" r="0.5" fill="currentColor"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value">3,902</div>
+        <div class="kpi-meta">
+          <span class="delta flat">→ 0.3%</span> across 14 services
+        </div>
+      </div>
+    </section>
+
+    <!-- AI Summary + Findings -->
+    <section class="grid">
+
+      <!-- Findings table -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Recent Security Hub Findings</div>
+          <div class="card-action">View all →</div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 90px">Severity</th>
+              <th>Finding</th>
+              <th>Resource</th>
+              <th style="width: 90px">When</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="sev crit">CRITICAL</span></td>
+              <td>S3 bucket allows public read access</td>
+              <td class="resource">s3://sample-logs-archive</td>
+              <td class="when">3m ago</td>
+            </tr>
+            <tr>
+              <td><span class="sev high">HIGH</span></td>
+              <td>IAM role with overly permissive policy</td>
+              <td class="resource">role/ec2-deploy-runner</td>
+              <td class="when">21m ago</td>
+            </tr>
+            <tr>
+              <td><span class="sev high">HIGH</span></td>
+              <td>Security group allows 0.0.0.0/0 on port 22</td>
+              <td class="resource">sg-0a4f8c19b7d2</td>
+              <td class="when">42m ago</td>
+            </tr>
+            <tr>
+              <td><span class="sev med">MEDIUM</span></td>
+              <td>RDS instance not encrypted at rest</td>
+              <td class="resource">db/analytics-replica-2</td>
+              <td class="when">1h ago</td>
+            </tr>
+            <tr>
+              <td><span class="sev med">MEDIUM</span></td>
+              <td>CloudTrail log file validation disabled</td>
+              <td class="resource">trail/org-management</td>
+              <td class="when">2h ago</td>
+            </tr>
+            <tr>
+              <td><span class="sev low">LOW</span></td>
+              <td>Lambda function using deprecated runtime</td>
+              <td class="resource">fn/report-generator</td>
+              <td class="when">4h ago</td>
+            </tr>
+            <tr>
+              <td><span class="sev low">LOW</span></td>
+              <td>EBS snapshot older than retention policy</td>
+              <td class="resource">snap-0e72ac914</td>
+              <td class="when">6h ago</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- AI Risk Summary -->
+      <div class="card ai-card">
+        <div class="card-head">
+          <div class="card-title">
+            AI Risk Summary
+            <span class="badge">BEDROCK</span>
+          </div>
+          <div class="card-action">Regenerate</div>
+        </div>
+        <div class="card-body">
+          <div class="ai-meta">
+            <span class="tag">anthropic.claude-sonnet</span>
+            <span>sample output</span>
+          </div>
+          <div class="ai-summary">
+            <p>Your environment shows <strong>elevated exposure</strong> in the storage and IAM layers this week. The most urgent issue is a public-read S3 bucket holding sample logs, which combined with disabled CloudTrail log validation creates a meaningful data-leak and tampering risk.</p>
+            <p>A recurring pattern of <strong>over-permissive IAM roles</strong> on deploy runners suggests CI/CD pipelines may be granting wildcard actions. Recommend tightening trust policies and enabling Access Analyzer findings as a Security Hub source.</p>
+            <p>Compliance posture remains <strong>healthy at 87%</strong>, with the gap concentrated in <em>encryption-at-rest</em> controls — once Macie is wired in, expect this to surface several additional medium findings.</p>
+          </div>
+          <div class="ai-footer">
+            <span>3 critical · 7 high prioritized</span>
+            <span>demo analysis</span>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Integrations -->
+    <div class="card-title" style="font-size: 14px; margin: 22px 0 12px;">Integrations</div>
+    <section class="integrations">
+
+      <div class="integration">
+        <div class="integration-head">
+          <div class="integration-logo hub">SH</div>
+          <div>
+            <h3>AWS Security Hub</h3>
+            <div class="svc">securityhub.amazonaws.com</div>
+          </div>
+        </div>
+        <p>Aggregating findings from GuardDuty, IAM Access Analyzer, and Config rules. Streaming to EventBridge → Lambda → Bedrock for enrichment.</p>
+        <span class="pill connected">sample data</span>
+      </div>
+
+      <div class="integration">
+        <div class="integration-head">
+          <div class="integration-logo macie">M</div>
+          <div>
+            <h3>Amazon Macie</h3>
+            <div class="svc">macie2.amazonaws.com</div>
+          </div>
+        </div>
+        <p>Planned: ingest sensitive-data discovery findings (PII, credentials, financial data) to enrich S3 risk scoring and trigger AI-generated remediation playbooks.</p>
+        <span class="pill planned">planned · Q2 milestone</span>
+      </div>
+
+      <div class="integration">
+        <div class="integration-head">
+          <div class="integration-logo inspector">I</div>
+          <div>
+            <h3>Amazon Inspector</h3>
+            <div class="svc">inspector2.amazonaws.com</div>
+          </div>
+        </div>
+        <p>Planned: pull EC2, ECR, and Lambda vulnerability findings into the unified finding store; correlate CVE exposure with workload criticality via Bedrock.</p>
+        <span class="pill planned">planned · Q2 milestone</span>
+      </div>
+
+    </section>
+
+  </main>
+</div>
+
+</body>
+</html>
